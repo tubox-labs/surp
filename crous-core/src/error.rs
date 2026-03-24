@@ -65,6 +65,23 @@ pub enum CrousError {
 
     #[error("Invalid data: {0}")]
     InvalidData(String),
+
+    #[error("Length overflow: {0} exceeds platform maximum")]
+    LengthOverflow(u64),
+
+    #[error("Invalid reference: index {0} out of bounds (dictionary has {1} entries)")]
+    InvalidReference(usize, usize),
+
+    #[error("Decompression ratio {ratio:.1}:1 exceeds maximum {max_ratio}:1 (compressed: {compressed}, uncompressed: {uncompressed})")]
+    DecompressionRatioExceeded {
+        ratio: f64,
+        max_ratio: usize,
+        compressed: usize,
+        uncompressed: usize,
+    },
+
+    #[error("String length {0} exceeds maximum {1}")]
+    StringTooLong(usize, usize),
 }
 
 /// Convenience Result alias.
