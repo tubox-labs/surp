@@ -740,9 +740,14 @@ fn reference_to_nonexistent_dict_entry() {
     data.extend_from_slice(&block_payload);
 
     let mut dec = Decoder::new(&data);
-    let result = dec.decode_next_owned().unwrap();
-    // Forward compatibility: unknown reference resolves to UInt
-    assert_eq!(result, Value::UInt(999));
+    let result = dec.decode_next_owned();
+    // Security fix: invalid references now return an error instead of silent fallback
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("Invalid reference"),
+        "Expected InvalidReference error, got: {err}"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -941,4 +946,154 @@ fn stress_10k_individual_roundtrips() {
         let decoded = dec.decode_next_owned().unwrap();
         assert_eq!(decoded, val, "mismatch at i={i}");
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 16. SECURITY: DECOMPRESSION RATIO LIMIT
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn decompression_ratio_limit_enforcement() {
+    // Test that decompression ratio limits prevent compression bombs.
+    use crous_core::decoder::Decoder;
+    use crous_core::encoder::Encoder;
+    use crous_core::limits::Limits;
+    use crous_core::wire::CompressionType;
+
+    // Create data with moderate compression ratio (~10:1 to ~30:1).
+    // Mix of repeated patterns that compress well but not extremely.
+    let mut moderate_data = String::new();
+    for i in 0..500 {
+        // Patterns like "item_0_data ", "item_1_data ", etc.
+        moderate_data.push_str(&format!("item_{}_data ", i % 100));
+    }
+    let val = Value::Str(moderate_data);
+
+    let mut enc = Encoder::new();
+    enc.set_compression(CompressionType::Lz4);
+    enc.encode_value(&val).unwrap();
+    let bytes = enc.finish().unwrap();
+
+    // With default limits (100:1), moderate compression should decode fine
+    let mut dec = Decoder::new(&bytes);
+    assert!(
+        dec.decode_next_owned().is_ok(),
+        "Moderate compression ratio data should decode with default limits"
+    );
+
+    // Now create highly compressible data (e.g., repeated single char) that
+    // will likely exceed even default limits when compressed extremely well.
+    let extreme_str = "x".repeat(100_000); // 100KB of 'x' -> compresses to ~100 bytes
+    let extreme_val = Value::Str(extreme_str);
+
+    let mut enc2 = Encoder::new();
+    enc2.set_compression(CompressionType::Lz4);
+    enc2.encode_value(&extreme_val).unwrap();
+    let extreme_bytes = enc2.finish().unwrap();
+
+    // With strict limits (20:1), this extreme compression should fail
+    let strict_limits = Limits::strict();
+    let mut dec2 = Decoder::with_limits(&extreme_bytes, strict_limits);
+    let result = dec2.decode_next_owned();
+    assert!(
+        result.is_err(),
+        "Extreme compression ratio should fail with strict limits"
+    );
+    let err_str = result.unwrap_err().to_string();
+    assert!(
+        err_str.contains("Decompression ratio") || err_str.contains("exceeds maximum"),
+        "Expected decompression ratio error, got: {err_str}"
+    );
+}
+
+#[test]
+fn string_too_long_error() {
+    // Test that StringTooLong error is returned for oversized strings
+    use crous_core::decoder::Decoder;
+    use crous_core::limits::Limits;
+
+    // Create a payload with a string claiming to be very large
+    let mut block_payload = vec![];
+    block_payload.push(WireType::LenDelimited.to_tag());
+    block_payload.push(0x00); // sub-type: string
+    // Encode length as 1 million bytes
+    encode_varint_vec(1_000_000, &mut block_payload);
+    // But only provide a few bytes (decoder will catch this)
+    block_payload.extend_from_slice(b"short");
+
+    let mut data = b"CROUSv1\x00".to_vec();
+    let checksum = crous_core::checksum::compute_xxh64(&block_payload);
+    data.push(BlockType::Data as u8);
+    encode_varint_vec(block_payload.len() as u64, &mut data);
+    data.push(CompressionType::None as u8);
+    data.extend_from_slice(&checksum.to_le_bytes());
+    data.extend_from_slice(&block_payload);
+
+    // With strict limits (64KB max string), should fail
+    let strict_limits = Limits::strict();
+    let mut dec = Decoder::with_limits(&data, strict_limits);
+    let result = dec.decode_next_owned();
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    // Should be either StringTooLong or UnexpectedEof
+    assert!(
+        err.to_string().contains("String length") || err.to_string().contains("Unexpected end"),
+        "Expected string length or EOF error, got: {err}"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 17. SECURITY: LENGTH OVERFLOW HANDLING
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn length_overflow_handling() {
+    // Test that huge length values don't cause issues
+    // On 64-bit systems this tests the limit enforcement;
+    // on 32-bit systems it would test the LengthOverflow error
+    use crous_core::decoder::Decoder;
+
+    let mut block_payload = vec![];
+    block_payload.push(WireType::LenDelimited.to_tag());
+    block_payload.push(0x00); // sub-type: string
+    // Encode length as u64::MAX / 2 (huge value)
+    encode_varint_vec(u64::MAX / 2, &mut block_payload);
+
+    let mut data = b"CROUSv1\x00".to_vec();
+    let checksum = crous_core::checksum::compute_xxh64(&block_payload);
+    data.push(BlockType::Data as u8);
+    encode_varint_vec(block_payload.len() as u64, &mut data);
+    data.push(CompressionType::None as u8);
+    data.extend_from_slice(&checksum.to_le_bytes());
+    data.extend_from_slice(&block_payload);
+
+    let mut dec = Decoder::new(&data);
+    let result = dec.decode_next_owned();
+    // Should fail with either LengthOverflow, StringTooLong, or similar
+    assert!(result.is_err());
+}
+
+#[test]
+fn invalid_reference_zero_copy() {
+    // Test that invalid references fail in zero-copy path too
+    let mut block_payload = vec![];
+    block_payload.push(WireType::Reference.to_tag());
+    encode_varint_vec(42, &mut block_payload); // non-existent reference
+
+    let mut data = b"CROUSv1\x00".to_vec();
+    let checksum = crous_core::checksum::compute_xxh64(&block_payload);
+    data.push(BlockType::Data as u8);
+    encode_varint_vec(block_payload.len() as u64, &mut data);
+    data.push(CompressionType::None as u8);
+    data.extend_from_slice(&checksum.to_le_bytes());
+    data.extend_from_slice(&block_payload);
+
+    let mut dec = Decoder::new(&data);
+    let result = dec.decode_next();
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("Invalid reference"),
+        "Expected InvalidReference error, got: {err}"
+    );
 }
