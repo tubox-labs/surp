@@ -8,17 +8,172 @@ for the Rust-backed ``_crous_native`` module built with PyO3.
 from __future__ import annotations
 
 from os import PathLike
-from typing import Any, Union
+from typing import Any, BinaryIO, Literal, Union
 
 __version__: str
-"""Package version string (e.g. ``'1.1.2'``)."""
+"""Package version string (e.g. ``'1.2.0'``)."""
 
 # ---------------------------------------------------------------------------
-# Module-level functions
+# Exception Hierarchy
+# ---------------------------------------------------------------------------
+
+class CrousError(Exception):
+    """Base exception for all Crous errors."""
+    ...
+
+class CrousEncodeError(CrousError):
+    """Error during encoding."""
+    ...
+
+class CrousDecodeError(CrousError):
+    """Error during decoding."""
+    ...
+
+class CrousChecksumError(CrousDecodeError):
+    """Checksum verification failed during decoding."""
+    ...
+
+class CrousTypeError(CrousEncodeError):
+    """Type cannot be serialized to Crous format."""
+    ...
+
+# ---------------------------------------------------------------------------
+# JSON-like API
+# ---------------------------------------------------------------------------
+
+def dumps(
+    obj: Any,
+    *,
+    compression: Literal["lz4", "zstd", "snappy", "none"] | None = None,
+    dedup: bool = False,
+    sort_keys: bool = False,
+) -> bytes:
+    """Serialize a Python object to Crous binary format.
+
+    This is the JSON-like API with options. Similar to ``json.dumps()``.
+
+    Args:
+        obj: The Python object to encode (dict, list, str, int, float,
+            bytes, bool, None).
+        compression: Compression algorithm: ``None``, ``"lz4"``, ``"zstd"``,
+            or ``"snappy"``. Default is no compression.
+        dedup: Enable string deduplication. Default ``False``.
+        sort_keys: Sort object keys alphabetically for canonical output.
+            Default ``False``.
+
+    Returns:
+        The encoded Crous binary data as ``bytes``.
+
+    Raises:
+        CrousEncodeError: If encoding fails.
+        CrousTypeError: If an unsupported type is encountered.
+
+    Example::
+
+        >>> import crous
+        >>> data = crous.dumps({"hello": "world"}, compression="lz4", dedup=True)
+    """
+    ...
+
+def loads(
+    data: bytes,
+    *,
+    strict: bool = True,
+    max_depth: int = 128,
+) -> Any:
+    """Deserialize Crous binary data to a Python object.
+
+    This is the JSON-like API with options. Similar to ``json.loads()``.
+
+    Args:
+        data: The Crous binary data (bytes).
+        strict: If ``True`` (default), verify checksums and enforce limits.
+            If ``False``, attempt best-effort decoding with relaxed limits.
+        max_depth: Maximum nesting depth (default: 128). Set to prevent
+            stack overflow on deeply nested data.
+
+    Returns:
+        The decoded Python object.
+
+    Raises:
+        CrousDecodeError: If decoding fails.
+        CrousChecksumError: If checksum verification fails (when strict=True).
+
+    Example::
+
+        >>> import crous
+        >>> obj = crous.loads(data)
+    """
+    ...
+
+def dump(
+    obj: Any,
+    fp: BinaryIO,
+    *,
+    compression: Literal["lz4", "zstd", "snappy", "none"] | None = None,
+    dedup: bool = False,
+    sort_keys: bool = False,
+) -> None:
+    """Serialize a Python object and write to a file-like object.
+
+    Similar to ``json.dump()``.
+
+    Args:
+        obj: The Python object to encode.
+        fp: A file-like object with a ``write()`` method (must accept bytes).
+        compression: Compression algorithm.
+        dedup: Enable string deduplication.
+        sort_keys: Sort object keys alphabetically.
+
+    Raises:
+        CrousEncodeError: If encoding fails.
+        CrousTypeError: If an unsupported type is encountered.
+        TypeError: If fp doesn't have a write method.
+
+    Example::
+
+        >>> with open("data.crous", "wb") as f:
+        ...     crous.dump({"hello": "world"}, f)
+    """
+    ...
+
+def load(
+    fp: BinaryIO,
+    *,
+    strict: bool = True,
+    max_depth: int = 128,
+) -> Any:
+    """Read and deserialize Crous binary data from a file-like object.
+
+    Similar to ``json.load()``.
+
+    Args:
+        fp: A file-like object with a ``read()`` method.
+        strict: If ``True`` (default), verify checksums.
+        max_depth: Maximum nesting depth (default: 128).
+
+    Returns:
+        The decoded Python object.
+
+    Raises:
+        CrousDecodeError: If decoding fails.
+        CrousChecksumError: If checksum verification fails.
+
+    Example::
+
+        >>> with open("data.crous", "rb") as f:
+        ...     obj = crous.load(f)
+    """
+    ...
+
+# ---------------------------------------------------------------------------
+# Legacy API (backward compatible)
 # ---------------------------------------------------------------------------
 
 def encode(obj: Any) -> bytes:
     """Encode a Python object into Crous binary format.
+
+    This is the simple API. For more options, use ``dumps()``.
 
     Supported types: ``dict``, ``list``, ``str``, ``int``, ``float``,
     ``bytes``, ``bool``, and ``None``.
@@ -30,8 +185,8 @@ def encode(obj: Any) -> bytes:
         The encoded binary data as ``bytes``.
 
     Raises:
-        TypeError: If *obj* contains a type that cannot be converted.
-        RuntimeError: If the encoder encounters an internal error.
+        CrousTypeError: If *obj* contains a type that cannot be converted.
+        CrousEncodeError: If the encoder encounters an internal error.
 
     Example::
 
@@ -45,6 +200,8 @@ def encode(obj: Any) -> bytes:
 def decode(data: bytes) -> Any:
     """Decode Crous binary ``bytes`` into Python objects.
 
+    This is the simple API. For more options, use ``loads()``.
+
     Returns a single value if the data contains exactly one top-level
     value, or a ``list`` of values otherwise.
 
@@ -56,7 +213,7 @@ def decode(data: bytes) -> Any:
         ``float``, ``bytes``, ``bool``, or ``None``).
 
     Raises:
-        RuntimeError: If decoding fails (corrupt data, unsupported wire
+        CrousDecodeError: If decoding fails (corrupt data, unsupported wire
             type, checksum mismatch, etc.).
 
     Example::
@@ -80,8 +237,8 @@ def encode_to_file(obj: Any, path: Union[str, PathLike[str]]) -> None:
         path: Destination file path.
 
     Raises:
-        TypeError: If *obj* contains an unsupported type.
-        RuntimeError: If encoding fails.
+        CrousTypeError: If *obj* contains an unsupported type.
+        CrousEncodeError: If encoding fails.
         OSError: If writing to *path* fails.
 
     Example::
@@ -106,7 +263,7 @@ def decode_from_file(path: Union[str, PathLike[str]]) -> Any:
         The decoded Python object.
 
     Raises:
-        RuntimeError: If decoding fails.
+        CrousDecodeError: If decoding fails.
         OSError: If reading *path* fails.
 
     Example::
@@ -149,7 +306,7 @@ def pretty_print(obj: Any, indent: int = 2) -> str:
         A string in Crous text format.
 
     Raises:
-        TypeError: If *obj* cannot be converted to a Crous value.
+        CrousTypeError: If *obj* cannot be converted to a Crous value.
 
     Example::
 
@@ -173,6 +330,10 @@ class Encoder:
     then retrieve the final binary with :meth:`finish` (or write it
     directly with :meth:`finish_to_file`).
 
+    Args:
+        sort_keys: If ``True``, sort object keys alphabetically for
+            canonical output. Default ``False``.
+
     Example::
 
         >>> enc = Encoder()
@@ -182,8 +343,12 @@ class Encoder:
         >>> data = enc.finish()
     """
 
-    def __init__(self) -> None:
-        """Create a new encoder."""
+    def __init__(self, *, sort_keys: bool = False) -> None:
+        """Create a new encoder.
+
+        Args:
+            sort_keys: Sort object keys alphabetically.
+        """
         ...
 
     def enable_dedup(self) -> None:
@@ -194,7 +359,7 @@ class Encoder:
         string values.
 
         Raises:
-            RuntimeError: If the encoder has already been finished.
+            CrousEncodeError: If the encoder has already been finished.
         """
         ...
 
@@ -207,7 +372,7 @@ class Encoder:
 
         Raises:
             ValueError: If *comp* is not a recognised algorithm name.
-            RuntimeError: If the encoder has already been finished.
+            CrousEncodeError: If the encoder has already been finished.
         """
         ...
 
@@ -218,8 +383,8 @@ class Encoder:
             obj: The Python object to encode.
 
         Raises:
-            TypeError: If *obj* contains an unsupported type.
-            RuntimeError: If encoding fails or the encoder is finished.
+            CrousTypeError: If *obj* contains an unsupported type.
+            CrousEncodeError: If encoding fails or the encoder is finished.
         """
         ...
 
@@ -232,7 +397,7 @@ class Encoder:
             The complete encoded binary as ``bytes``.
 
         Raises:
-            RuntimeError: If the encoder has already been finished.
+            CrousEncodeError: If the encoder has already been finished.
         """
         ...
 
@@ -245,7 +410,7 @@ class Encoder:
             path: Destination file path.
 
         Raises:
-            RuntimeError: If the encoder has already been finished.
+            CrousEncodeError: If the encoder has already been finished.
             OSError: If writing to *path* fails.
         """
         ...
@@ -259,6 +424,10 @@ class CrousDecoder:
 
     Wraps binary data and decodes all top-level values from it.
 
+    Args:
+        data: Raw Crous binary ``bytes`` to decode.
+        max_depth: Maximum nesting depth (default: 128).
+
     Example::
 
         >>> dec = CrousDecoder(data)
@@ -266,11 +435,12 @@ class CrousDecoder:
         >>> print(values[0])
     """
 
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, data: bytes, *, max_depth: int = 128) -> None:
         """Create a decoder over the given binary data.
 
         Args:
             data: Raw Crous binary ``bytes`` to decode.
+            max_depth: Maximum nesting depth (default: 128).
         """
         ...
 
@@ -283,7 +453,7 @@ class CrousDecoder:
             A list of decoded Python objects.
 
         Raises:
-            RuntimeError: If the decoder has already been consumed, or
+            CrousDecodeError: If the decoder has already been consumed, or
                 if decoding fails.
         """
         ...
