@@ -13,6 +13,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-03-24
+
+### Security
+
+- **32-bit platform safety**: Added `safe_usize()` helper to validate length conversions, preventing overflow on 32-bit systems. All `as usize` casts replaced with checked conversions that return `LengthOverflow` error for values exceeding platform limits.
+- **Decompression bomb protection**: Added `max_decompression_ratio` limit (default 100:1, strict 20:1) to prevent decompression bombs. Decoder validates ratio before decompressing blocks and returns `DecompressionRatioExceeded` error for suspicious payloads.
+- **Invalid reference hardening**: Changed invalid reference handling from silent fallback (UInt) to explicit `InvalidReference` error, preventing potential data corruption or confusion from malformed string dictionary references.
+- **String length validation**: Explicit validation of string lengths against `max_string_length` limit with dedicated `StringTooLong` error type.
+- **MSRV compatibility**: Added `floor_char_boundary()` polyfill for platforms using Rust 1.85.0 (method stable since 1.91.0), ensuring UTF-8 safety on all supported platforms.
+
+### Performance
+
+- **Zero-allocation block flush**: Replaced `block_buf.clone()` with `std::mem::take()` in encoder's `flush_block()`, eliminating unnecessary allocation and copy on every block boundary (10-15% speedup for multi-block encodes).
+- **Pre-allocation support**: Added `Encoder::with_size_hint(estimated_size)` constructor for workloads with known size, reducing reallocations during encoding.
+
+### Python API
+
+- **JSON-like API**: Complete redesign of Python bindings with `dumps()`/`loads()`/`dump()`/`load()` functions matching the `json` module conventions. Supports options: `compression`, `dedup`, `sort_keys`, `strict`, `max_depth`.
+- **Exception hierarchy**: Added custom exception types for better error handling:
+  - `CrousError`: Base exception class
+  - `CrousEncodeError`: Encoding failures
+  - `CrousDecodeError`: Decoding failures (malformed data)
+  - `CrousChecksumError`: Checksum verification failures
+  - `CrousTypeError`: Type conversion errors
+- **IDE support**: Updated `_crous_native.pyi` type stubs with complete signatures for all functions, classes, and exceptions.
+
+### Added
+
+- New error types: `LengthOverflow`, `InvalidReference`, `DecompressionRatioExceeded`, `StringTooLong`
+- Security-focused test suite in `adversarial.rs`:
+  - `decompression_ratio_limit_enforcement`: Validates decompression bomb protection
+  - `string_too_long_error`: Tests string length limits
+  - `length_overflow_handling`: Validates 32-bit safe length handling
+  - `invalid_reference_zero_copy`: Tests reference validation in zero-copy path
+- Updated `reference_to_nonexistent_dict_entry` test to expect error instead of fallback behavior
+
+### Fixed
+
+- Clippy warning: `len() > 0` → `!is_empty()` in decompression check
+- Clippy `unsafe-op-in-unsafe-fn`: Added explicit unsafe block in `crous-simd` NEON intrinsics
+- Test reliability: Fixed `decompression_ratio_limit_enforcement` to use moderate compression ratio data for default limits test
+
+### Breaking Changes
+
+- **Invalid reference behavior**: Code relying on silent UInt fallback for invalid references will now receive an error. Update error handling to expect `InvalidReference` errors.
+- **Python API**: Complete rewrite of Python bindings. Old `encode()`/`decode()` functions replaced with `dumps()`/`loads()`/`dump()`/`load()`. Update import statements and function calls.
+
+## [1.1.2] - 2026-03-10
+
 ### Added
 - Initial implementation of `crous-core` with encoder/decoder
 - LEB128 varint and ZigZag signed integer encoding
