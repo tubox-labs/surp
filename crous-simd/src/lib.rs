@@ -81,7 +81,8 @@ mod simd_varint_neon {
         }
 
         if remaining >= 16 {
-            let ptr = data.as_ptr().add(offset);
+            // SAFETY: We've verified remaining >= 16 and offset < data.len()
+            let ptr = unsafe { data.as_ptr().add(offset) };
             let chunk = unsafe { vld1q_u8(ptr) };
             let high_bits = unsafe { vshrq_n_u8::<7>(chunk) }; // isolate bit 7
             // We want the first lane where bit 7 is 0 (terminator)
