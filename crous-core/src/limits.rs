@@ -15,6 +15,9 @@ pub struct Limits {
     pub max_memory: usize,
     /// Maximum string length in bytes (default: 16 MiB).
     pub max_string_length: usize,
+    /// Maximum decompression ratio (uncompressed/compressed, default: 100).
+    /// Protects against decompression bombs.
+    pub max_decompression_ratio: usize,
 }
 
 impl Default for Limits {
@@ -25,6 +28,7 @@ impl Default for Limits {
             max_items: 1_000_000,                // 1M items
             max_memory: 256 * 1024 * 1024,       // 256 MiB
             max_string_length: 16 * 1024 * 1024, // 16 MiB
+            max_decompression_ratio: 100,        // 100:1 max ratio
         }
     }
 }
@@ -38,6 +42,7 @@ impl Limits {
             max_items: 10_000,
             max_memory: 4 * 1024 * 1024, // 4 MiB
             max_string_length: 65536,    // 64 KiB
+            max_decompression_ratio: 20, // 20:1 max ratio
         }
     }
 
@@ -49,6 +54,7 @@ impl Limits {
             max_items: usize::MAX,
             max_memory: usize::MAX,
             max_string_length: usize::MAX,
+            max_decompression_ratio: usize::MAX,
         }
     }
 }
