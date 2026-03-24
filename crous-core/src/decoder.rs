@@ -12,6 +12,33 @@ use crate::value::{CrousValue, Value};
 use crate::varint::{decode_signed_varint, decode_varint};
 use crate::wire::{BlockType, CompressionType, WireType};
 
+/// Convert u64 to usize safely, returning error on overflow (32-bit platforms).
+#[inline]
+fn safe_usize(val: u64) -> Result<usize> {
+    usize::try_from(val).map_err(|_| CrousError::LengthOverflow(val))
+}
+
+/// MSRV-compatible polyfill for `str::floor_char_boundary` (stable in 1.91+).
+/// Returns the largest valid character boundary `<= index` in `s`.
+#[inline]
+fn floor_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        s.len()
+    } else {
+        // Walk backwards from index to find a valid UTF-8 char boundary.
+        // UTF-8 continuation bytes have the pattern 10xx_xxxx (0x80-0xBF).
+        let bytes = s.as_bytes();
+        let lower_bound = index.saturating_sub(3);
+        for i in (lower_bound..=index).rev() {
+            // A byte is a char boundary if it's NOT a continuation byte.
+            if (bytes[i] as i8) >= -0x40 {
+                return i;
+            }
+        }
+        lower_bound
+    }
+}
+
 /// Decoder that reads Crous binary data and produces values.
 ///
 /// # Example
@@ -146,7 +173,7 @@ impl<'a> Decoder<'a> {
                 self.block_pos += 1; // sub-type byte
                 let (len, consumed) = decode_varint(self.data, self.block_pos)?;
                 self.block_pos += consumed;
-                let len = len as usize;
+                let len = safe_usize(len)?;
                 if self.block_pos + len > block_end {
                     return Err(CrousError::UnexpectedEof(self.block_pos + len));
                 }
@@ -156,7 +183,7 @@ impl<'a> Decoder<'a> {
             WireType::StartArray => {
                 let (count, consumed) = decode_varint(self.data, self.block_pos)?;
                 self.block_pos += consumed;
-                let count = count as usize;
+                let count = safe_usize(count)?;
                 // Enforce item limit even during skip to prevent DoS.
                 if count > self.limits.max_items {
                     return Err(CrousError::TooManyItems(count, self.limits.max_items));
@@ -184,7 +211,7 @@ impl<'a> Decoder<'a> {
             WireType::StartObject => {
                 let (count, consumed) = decode_varint(self.data, self.block_pos)?;
                 self.block_pos += consumed;
-                let count = count as usize;
+                let count = safe_usize(count)?;
                 // Enforce item limit even during skip to prevent DoS.
                 if count > self.limits.max_items {
                     return Err(CrousError::TooManyItems(count, self.limits.max_items));
@@ -201,7 +228,7 @@ impl<'a> Decoder<'a> {
                     // Skip key (varint len + bytes).
                     let (key_len, kc) = decode_varint(self.data, self.block_pos)?;
                     self.block_pos += kc;
-                    let key_len = key_len as usize;
+                    let key_len = safe_usize(key_len)?;
                     if self.block_pos + key_len > block_end {
                         return Err(CrousError::UnexpectedEof(self.block_pos + key_len));
                     }
@@ -270,7 +297,7 @@ impl<'a> Decoder<'a> {
 
             let (block_len, varint_bytes) = decode_varint(self.data, self.pos)?;
             self.pos += varint_bytes;
-            let block_len = block_len as usize;
+            let block_len = safe_usize(block_len)?;
 
             if block_len > self.limits.max_block_size {
                 return Err(CrousError::BlockTooLarge(
@@ -362,7 +389,7 @@ impl<'a> Decoder<'a> {
         let mut pos = 0;
         let (count, consumed) = decode_varint(payload, pos)?;
         pos += consumed;
-        let count = count as usize;
+        let count = safe_usize(count)?;
 
         if count > self.limits.max_items {
             return Err(CrousError::TooManyItems(count, self.limits.max_items));
@@ -375,7 +402,7 @@ impl<'a> Decoder<'a> {
         for _ in 0..count {
             let (original_idx, c1) = decode_varint(payload, pos)?;
             pos += c1;
-            let original_idx = original_idx as usize;
+            let original_idx = safe_usize(original_idx)?;
 
             // Validate that original_idx is within bounds (cannot exceed entry count).
             if original_idx >= count {
@@ -386,11 +413,11 @@ impl<'a> Decoder<'a> {
 
             let (prefix_len, c2) = decode_varint(payload, pos)?;
             pos += c2;
-            let prefix_len = prefix_len as usize;
+            let prefix_len = safe_usize(prefix_len)?;
 
             let (suffix_len, c3) = decode_varint(payload, pos)?;
             pos += c3;
-            let suffix_len = suffix_len as usize;
+            let suffix_len = safe_usize(suffix_len)?;
 
             if pos.checked_add(suffix_len).is_none_or(|end| end > payload.len()) {
                 return Err(CrousError::UnexpectedEof(pos));
@@ -402,7 +429,7 @@ impl<'a> Decoder<'a> {
             let prefix_end = prefix_len.min(prev.len());
             // Ensure prefix_end falls on a valid char boundary.
             // If corrupted, snap down to the nearest valid boundary.
-            let prefix_end = prev.floor_char_boundary(prefix_end);
+            let prefix_end = floor_char_boundary(&prev, prefix_end);
             let mut full = String::with_capacity(prefix_end + suffix_len);
             full.push_str(&prev[..prefix_end]);
             full.push_str(std::str::from_utf8(suffix).map_err(|_| CrousError::InvalidUtf8(pos))?);
@@ -436,7 +463,7 @@ impl<'a> Decoder<'a> {
     fn decompress_block(&self, comp_type: CompressionType, wire: &[u8]) -> Result<Vec<u8>> {
         // Read the uncompressed length prefix.
         let (uncomp_len, prefix_consumed) = decode_varint(wire, 0)?;
-        let uncomp_len = uncomp_len as usize;
+        let uncomp_len = safe_usize(uncomp_len)?;
 
         if uncomp_len > self.limits.max_block_size {
             return Err(CrousError::BlockTooLarge(
@@ -446,6 +473,20 @@ impl<'a> Decoder<'a> {
         }
 
         let compressed = &wire[prefix_consumed..];
+
+        // Check decompression ratio to prevent decompression bombs.
+        // A ratio of 100:1 means 1 byte compressed -> 100 bytes uncompressed max.
+        if !compressed.is_empty() {
+            let ratio = uncomp_len / compressed.len();
+            if ratio > self.limits.max_decompression_ratio {
+                return Err(CrousError::DecompressionRatioExceeded {
+                    ratio: uncomp_len as f64 / compressed.len() as f64,
+                    max_ratio: self.limits.max_decompression_ratio,
+                    compressed: compressed.len(),
+                    uncompressed: uncomp_len,
+                });
+            }
+        }
 
         match comp_type {
             CompressionType::None => Ok(compressed.to_vec()),
@@ -653,10 +694,10 @@ impl<'a> Decoder<'a> {
                 let data = self.block_data();
                 let (len, consumed) = decode_varint(data, self.block_pos)?;
                 self.block_pos += consumed;
-                let len = len as usize;
+                let len = safe_usize(len)?;
 
                 if len > self.limits.max_string_length {
-                    return Err(CrousError::MemoryLimitExceeded(
+                    return Err(CrousError::StringTooLong(
                         len,
                         self.limits.max_string_length,
                     ));
@@ -694,7 +735,7 @@ impl<'a> Decoder<'a> {
                 let data = self.block_data();
                 let (count, consumed) = decode_varint(data, self.block_pos)?;
                 self.block_pos += consumed;
-                let count = count as usize;
+                let count = safe_usize(count)?;
 
                 if count > self.limits.max_items {
                     return Err(CrousError::TooManyItems(count, self.limits.max_items));
@@ -726,7 +767,7 @@ impl<'a> Decoder<'a> {
                 let data = self.block_data();
                 let (count, consumed) = decode_varint(data, self.block_pos)?;
                 self.block_pos += consumed;
-                let count = count as usize;
+                let count = safe_usize(count)?;
 
                 if count > self.limits.max_items {
                     return Err(CrousError::TooManyItems(count, self.limits.max_items));
@@ -738,7 +779,7 @@ impl<'a> Decoder<'a> {
                     let data = self.block_data();
                     let (key_len, kc) = decode_varint(data, self.block_pos)?;
                     self.block_pos += kc;
-                    let key_len = key_len as usize;
+                    let key_len = safe_usize(key_len)?;
 
                     if self.block_pos + key_len > block_end {
                         return Err(CrousError::UnexpectedEof(self.block_pos + key_len));
@@ -771,14 +812,17 @@ impl<'a> Decoder<'a> {
                 let data = self.block_data();
                 let (ref_id, consumed) = decode_varint(data, self.block_pos)?;
                 self.block_pos += consumed;
-                let ref_id = ref_id as usize;
+                let ref_id = safe_usize(ref_id)?;
 
                 // Resolve from per-block owned string table.
                 if let Some(s) = self.owned_strings.get(ref_id) {
                     Ok(Value::Str(s.clone()))
                 } else {
-                    // Unknown reference — return as UInt for forward compatibility.
-                    Ok(Value::UInt(ref_id as u64))
+                    // Invalid reference — return error instead of silent fallback.
+                    Err(CrousError::InvalidReference(
+                        ref_id,
+                        self.owned_strings.len(),
+                    ))
                 }
             }
         }
@@ -839,10 +883,10 @@ impl<'a> Decoder<'a> {
 
                 let (len, consumed) = decode_varint(self.data, self.block_pos)?;
                 self.block_pos += consumed;
-                let len = len as usize;
+                let len = safe_usize(len)?;
 
                 if len > self.limits.max_string_length {
-                    return Err(CrousError::MemoryLimitExceeded(
+                    return Err(CrousError::StringTooLong(
                         len,
                         self.limits.max_string_length,
                     ));
@@ -884,7 +928,7 @@ impl<'a> Decoder<'a> {
                 }
                 let (count, consumed) = decode_varint(self.data, self.block_pos)?;
                 self.block_pos += consumed;
-                let count = count as usize;
+                let count = safe_usize(count)?;
 
                 if count > self.limits.max_items {
                     return Err(CrousError::TooManyItems(count, self.limits.max_items));
@@ -919,7 +963,7 @@ impl<'a> Decoder<'a> {
                 }
                 let (count, consumed) = decode_varint(self.data, self.block_pos)?;
                 self.block_pos += consumed;
-                let count = count as usize;
+                let count = safe_usize(count)?;
 
                 if count > self.limits.max_items {
                     return Err(CrousError::TooManyItems(count, self.limits.max_items));
@@ -935,7 +979,7 @@ impl<'a> Decoder<'a> {
                     // Read key: varint length + UTF-8 bytes.
                     let (key_len, kc) = decode_varint(self.data, self.block_pos)?;
                     self.block_pos += kc;
-                    let key_len = key_len as usize;
+                    let key_len = safe_usize(key_len)?;
 
                     if self.block_pos + key_len > block_end {
                         return Err(CrousError::UnexpectedEof(self.block_pos + key_len));
@@ -970,14 +1014,14 @@ impl<'a> Decoder<'a> {
                 // Reference wire type: resolve from the per-block string dictionary.
                 let (ref_id, consumed) = decode_varint(self.data, self.block_pos)?;
                 self.block_pos += consumed;
-                let ref_id = ref_id as usize;
+                let ref_id = safe_usize(ref_id)?;
 
                 // Resolve via borrowed slices from the input buffer (zero-copy).
                 if let Some(&s) = self.str_slices.get(ref_id) {
                     Ok(CrousValue::Str(s))
                 } else {
-                    // Unknown reference — return as UInt for forward compatibility.
-                    Ok(CrousValue::UInt(ref_id as u64))
+                    // Invalid reference — return error instead of silent fallback.
+                    Err(CrousError::InvalidReference(ref_id, self.str_slices.len()))
                 }
             }
         }

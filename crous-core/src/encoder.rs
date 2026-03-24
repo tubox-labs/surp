@@ -75,6 +75,35 @@ impl Encoder {
         }
     }
 
+    /// Create an encoder with a size hint for pre-allocation.
+    ///
+    /// Use this when you have an estimate of the final encoded size to avoid
+    /// reallocations during encoding. The `estimated_size` should be an estimate
+    /// of the total output size in bytes.
+    ///
+    /// # Example
+    /// ```
+    /// use crous_core::Encoder;
+    ///
+    /// // Pre-allocate for ~10KB of output
+    /// let mut enc = Encoder::with_size_hint(10_000);
+    /// ```
+    pub fn with_size_hint(estimated_size: usize) -> Self {
+        // Add some headroom for block framing overhead (header + checksum + length fields)
+        let capacity = estimated_size.saturating_add(128);
+        Self {
+            output: Vec::with_capacity(capacity),
+            block_buf: Vec::with_capacity(estimated_size),
+            depth: 0,
+            limits: Limits::default(),
+            header_written: false,
+            flags: FLAGS_NONE,
+            compression: CompressionType::None,
+            string_dict: HashMap::new(),
+            dedup_strings: false,
+        }
+    }
+
     /// Enable string deduplication. Repeated strings within a block
     /// will be encoded as Reference wire types pointing to the dictionary.
     pub fn enable_dedup(&mut self) {
@@ -247,6 +276,7 @@ impl Encoder {
         let checksum = compute_xxh64(&self.block_buf);
 
         // Compress if requested. The on-wire payload may differ from block_buf.
+        // Optimization: use std::mem::take to avoid cloning when possible.
         let (wire_payload, wire_comp) = if self.compression != CompressionType::None {
             match self.compress_payload(&self.block_buf) {
                 Some(compressed) if compressed.len() < self.block_buf.len() => {
@@ -255,15 +285,19 @@ impl Encoder {
                     let mut framed = Vec::with_capacity(10 + compressed.len());
                     encode_varint_vec(self.block_buf.len() as u64, &mut framed);
                     framed.extend_from_slice(&compressed);
+                    // Clear block_buf since we're using the compressed version
+                    self.block_buf.clear();
                     (framed, self.compression)
                 }
                 _ => {
                     // Compression didn't help — store uncompressed.
-                    (self.block_buf.clone(), CompressionType::None)
+                    // Use take() instead of clone() to avoid allocation.
+                    (std::mem::take(&mut self.block_buf), CompressionType::None)
                 }
             }
         } else {
-            (self.block_buf.clone(), CompressionType::None)
+            // No compression — take ownership instead of cloning.
+            (std::mem::take(&mut self.block_buf), CompressionType::None)
         };
 
         // Block header:
@@ -277,7 +311,7 @@ impl Encoder {
         self.output.extend_from_slice(&wire_payload);
 
         total_size += 1 + 1 + 8 + wire_payload.len();
-        self.block_buf.clear();
+        // block_buf is already cleared by take() or explicit clear() above
         self.string_dict.clear(); // Reset per-block dictionary.
         Ok(total_size)
     }
