@@ -69,6 +69,13 @@ pub fn parse(input: &str) -> Result<Value> {
     let mut parser = Parser::new(input);
     let value = parser.parse_value()?;
     parser.skip_whitespace_and_comments();
+    if parser.peek() == Some(';') {
+        parser.advance();
+        parser.skip_whitespace_and_comments();
+    }
+    if parser.pos != input.len() {
+        return Err(parser.error("unexpected trailing content"));
+    }
     Ok(value)
 }
 
@@ -333,16 +340,20 @@ impl<'a> Parser<'a> {
             self.advance();
         }
         let start = self.pos;
-        // Read until ';' but do NOT consume the ';' — it's the statement terminator
-        // and will be consumed by the object/array parser.
+        // Read only base64 payload characters; do not consume the next delimiter.
+        // This allows bytes values in objects (delimiter ';') and arrays (delimiter ',').
         while let Some(ch) = self.peek() {
-            if ch == ';' {
+            if ch.is_ascii_alphanumeric() || ch == '+' || ch == '/' || ch == '=' {
+                self.advance();
+            } else {
                 break;
             }
-            self.advance();
         }
         let b64_str = &self.input[start..self.pos];
-        // Do NOT advance past ';' — let the caller handle it.
+
+        if b64_str.is_empty() {
+            return Err(self.error("empty base64 payload"));
+        }
 
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(b64_str.trim())
@@ -362,7 +373,7 @@ impl<'a> Parser<'a> {
             }
             items.push(self.parse_value()?);
             self.skip_whitespace_and_comments();
-            if self.peek() == Some(',') {
+            if self.peek() == Some(',') || self.peek() == Some(';') {
                 self.advance();
             }
         }
@@ -709,6 +720,32 @@ mod tests {
     fn parse_type_annotation() {
         let v = parse("42::u32").unwrap();
         assert_eq!(v, Value::UInt(42));
+    }
+
+    #[test]
+    fn parse_rejects_trailing_content() {
+        assert!(parse("42 trailing").is_err());
+    }
+
+    #[test]
+    fn parse_bytes_inside_array() {
+        let v = parse("[b64#AQID, b64#BAUG]").unwrap();
+        assert_eq!(
+            v,
+            Value::Array(vec![
+                Value::Bytes(vec![1, 2, 3]),
+                Value::Bytes(vec![4, 5, 6])
+            ])
+        );
+
+        let v2 = parse("[b64#AQID; b64#BAUG;]").unwrap();
+        assert_eq!(
+            v2,
+            Value::Array(vec![
+                Value::Bytes(vec![1, 2, 3]),
+                Value::Bytes(vec![4, 5, 6])
+            ])
+        );
     }
 
     #[test]

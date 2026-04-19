@@ -188,13 +188,9 @@ impl Crous for usize {
 
     fn from_crous_value(value: &Value) -> Result<Self> {
         match value {
-            Value::UInt(n) => {
-                usize::try_from(*n).map_err(|_| {
-                    crate::error::CrousError::SchemaMismatch(format!(
-                        "uint {n} out of range for usize"
-                    ))
-                })
-            }
+            Value::UInt(n) => usize::try_from(*n).map_err(|_| {
+                crate::error::CrousError::SchemaMismatch(format!("uint {n} out of range for usize"))
+            }),
             _ => Err(crate::error::CrousError::SchemaMismatch(
                 "expected uint for usize".into(),
             )),
@@ -289,13 +285,9 @@ impl Crous for isize {
 
     fn from_crous_value(value: &Value) -> Result<Self> {
         match value {
-            Value::Int(n) => {
-                isize::try_from(*n).map_err(|_| {
-                    crate::error::CrousError::SchemaMismatch(format!(
-                        "int {n} out of range for isize"
-                    ))
-                })
-            }
+            Value::Int(n) => isize::try_from(*n).map_err(|_| {
+                crate::error::CrousError::SchemaMismatch(format!("int {n} out of range for isize"))
+            }),
             Value::UInt(n) => {
                 let as_i64 = i64::try_from(*n).map_err(|_| {
                     crate::error::CrousError::SchemaMismatch(format!(

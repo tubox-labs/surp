@@ -139,7 +139,8 @@ impl<R: AsyncRead + Unpin> FramedReader<R> {
         }
 
         let (block_len, _) = crous_core::varint::decode_varint(&len_bytes, 0)?;
-        let block_len = block_len as usize;
+        let block_len =
+            usize::try_from(block_len).map_err(|_| CrousError::LengthOverflow(block_len))?;
 
         // Read compression type (1 byte) + checksum (8 bytes) + payload.
         let remaining = 1 + 8 + block_len;

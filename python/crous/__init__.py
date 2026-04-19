@@ -19,7 +19,7 @@ from crous.wire import WireType, BlockType, CompressionType
 from crous.varint import encode_varint, decode_varint, zigzag_encode, zigzag_decode
 from crous.error import CrousError
 
-__version__ = "0.1.0"
+__version__ = "1.1.3"
 __all__ = [
     "Value",
     "ValueType",

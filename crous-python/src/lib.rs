@@ -26,11 +26,36 @@ use std::path::PathBuf;
 // Exception Hierarchy
 // ---------------------------------------------------------------------------
 
-create_exception!(_crous_native, CrousError, PyException, "Base exception for all Crous errors.");
-create_exception!(_crous_native, CrousEncodeError, CrousError, "Error during encoding.");
-create_exception!(_crous_native, CrousDecodeError, CrousError, "Error during decoding.");
-create_exception!(_crous_native, CrousChecksumError, CrousDecodeError, "Checksum verification failed.");
-create_exception!(_crous_native, CrousTypeError, CrousEncodeError, "Type cannot be serialized.");
+create_exception!(
+    _crous_native,
+    CrousError,
+    PyException,
+    "Base exception for all Crous errors."
+);
+create_exception!(
+    _crous_native,
+    CrousEncodeError,
+    CrousError,
+    "Error during encoding."
+);
+create_exception!(
+    _crous_native,
+    CrousDecodeError,
+    CrousError,
+    "Error during decoding."
+);
+create_exception!(
+    _crous_native,
+    CrousChecksumError,
+    CrousDecodeError,
+    "Checksum verification failed."
+);
+create_exception!(
+    _crous_native,
+    CrousTypeError,
+    CrousEncodeError,
+    "Type cannot be serialized."
+);
 
 /// Map a crous_core error to our custom exception hierarchy.
 fn map_decode_error(e: crous_core::CrousError) -> PyErr {
@@ -647,7 +672,10 @@ fn _crous_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("CrousError", m.py().get_type::<CrousError>())?;
     m.add("CrousEncodeError", m.py().get_type::<CrousEncodeError>())?;
     m.add("CrousDecodeError", m.py().get_type::<CrousDecodeError>())?;
-    m.add("CrousChecksumError", m.py().get_type::<CrousChecksumError>())?;
+    m.add(
+        "CrousChecksumError",
+        m.py().get_type::<CrousChecksumError>(),
+    )?;
     m.add("CrousTypeError", m.py().get_type::<CrousTypeError>())?;
 
     // JSON-like API

@@ -65,21 +65,27 @@ print(ver)
     let stdout = String::from_utf8_lossy(&out.stdout);
     let mut lines = stdout.lines();
     let framework_prefix = lines.next().unwrap_or("").trim().to_owned();
-    let framework_dir    = lines.next().unwrap_or("").trim().to_owned();
-    let libdir           = lines.next().unwrap_or("").trim().to_owned();
-    let _ldlibrary       = lines.next().unwrap_or("").trim().to_owned();
-    let _version         = lines.next().unwrap_or("").trim().to_owned();
+    let framework_dir = lines.next().unwrap_or("").trim().to_owned();
+    let libdir = lines.next().unwrap_or("").trim().to_owned();
+    let _ldlibrary = lines.next().unwrap_or("").trim().to_owned();
+    let _version = lines.next().unwrap_or("").trim().to_owned();
 
     // --- Emit link directives -----------------------------------------------------------------
-    if !framework_prefix.is_empty() && !framework_dir.is_empty() {
+    let framework_path = std::path::Path::new(&framework_prefix).join(&framework_dir);
+    let framework_name = framework_dir
+        .strip_suffix(".framework")
+        .unwrap_or(&framework_dir)
+        .to_owned();
+    let framework_binary = framework_path.join(&framework_name);
+
+    if !framework_prefix.is_empty()
+        && !framework_dir.is_empty()
+        && framework_path.exists()
+        && framework_binary.exists()
+    {
         // macOS framework build – link the whole Python framework bundle.
         // `framework_dir` is typically "Python.framework"; strip any ".framework" suffix to get
         // the name passed to `-framework <Name>`.
-        let framework_name = framework_dir
-            .strip_suffix(".framework")
-            .unwrap_or(&framework_dir)
-            .to_owned();
-
         // cargo:rustc-link-search=framework=<path>  →  -F <path>
         println!("cargo:rustc-link-search=framework={framework_prefix}");
         // cargo:rustc-link-lib=framework=<name>     →  -framework <name>
@@ -88,16 +94,23 @@ print(ver)
         // Non-framework build (Linux, Windows, non-framework macOS).
         // Link against the shared / static Python library in LIBDIR.
         println!("cargo:rustc-link-search=native={libdir}");
-        // Derive `pythonX.Y` from the library filename or fall back to `python3`.
-        let lib_name = _ldlibrary
-            .trim_start_matches("lib")
-            .trim_end_matches(".so")
-            .trim_end_matches(".dylib")
-            .trim_end_matches(".a")
-            // Strip version suffix like ".3.14" that isn't part of the -l flag
-            .split('.').next()
-            .unwrap_or("python3")
-            .to_owned();
+
+        // Prefer an explicit `pythonX.Y` name from sysconfig version.
+        // This is robust even when LDLIBRARY is a framework-relative path
+        // (e.g. "Python.framework/Versions/3.12/Python").
+        let lib_name = if !_version.is_empty() {
+            format!("python{_version}")
+        } else {
+            _ldlibrary
+                .rsplit('/')
+                .next()
+                .unwrap_or("python3")
+                .trim_start_matches("lib")
+                .trim_end_matches(".so")
+                .trim_end_matches(".dylib")
+                .trim_end_matches(".a")
+                .to_owned()
+        };
         println!("cargo:rustc-link-lib={lib_name}");
     }
 }
