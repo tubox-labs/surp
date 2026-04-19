@@ -322,9 +322,7 @@ fn structural_eq(a: &Value, b: &Value) -> bool {
         (Value::Int(x), Value::Int(y)) => x == y,
         (Value::UInt(x), Value::Int(y)) => (*x as i128) == (*y as i128),
         (Value::Int(x), Value::UInt(y)) => (*x as i128) == (*y as i128),
-        (Value::Float(x), Value::Float(y)) => {
-            (x - y).abs() < 1e-10 || (x.is_nan() && y.is_nan())
-        }
+        (Value::Float(x), Value::Float(y)) => (x - y).abs() < 1e-10 || (x.is_nan() && y.is_nan()),
         (Value::Str(x), Value::Str(y)) => x == y,
         (Value::Bytes(x), Value::Bytes(y)) => x == y,
         (Value::Array(x), Value::Array(y)) => {

@@ -419,7 +419,10 @@ impl<'a> Decoder<'a> {
             pos += c3;
             let suffix_len = safe_usize(suffix_len)?;
 
-            if pos.checked_add(suffix_len).is_none_or(|end| end > payload.len()) {
+            if pos
+                .checked_add(suffix_len)
+                .is_none_or(|end| end > payload.len())
+            {
                 return Err(CrousError::UnexpectedEof(pos));
             }
             let suffix = &payload[pos..pos + suffix_len];

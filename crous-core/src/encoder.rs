@@ -279,7 +279,12 @@ impl Encoder {
         // Optimization: use std::mem::take to avoid cloning when possible.
         let (wire_payload, wire_comp) = if self.compression != CompressionType::None {
             match self.compress_payload(&self.block_buf) {
-                Some(compressed) if compressed.len() < self.block_buf.len() => {
+                Some(compressed)
+                    if compressed.len() < self.block_buf.len()
+                        && !compressed.is_empty()
+                        && (self.block_buf.len() / compressed.len())
+                            <= self.limits.max_decompression_ratio =>
+                {
                     // Store uncompressed length as a varint prefix so the decoder
                     // can pre-allocate the decompression buffer.
                     let mut framed = Vec::with_capacity(10 + compressed.len());
@@ -538,5 +543,23 @@ mod tests {
         // Nest 3 levels deep — should fail
         let val = Value::Array(vec![Value::Array(vec![Value::Array(vec![])])]);
         assert!(enc.encode_value(&val).is_err());
+    }
+
+    #[cfg(feature = "lz4")]
+    #[test]
+    fn compression_ratio_guard_falls_back_to_uncompressed() {
+        let mut enc = Encoder::new();
+        enc.set_compression(CompressionType::Lz4);
+        enc.encode_value(&Value::Str("A".repeat(20_000))).unwrap();
+        let bytes = enc.finish().unwrap();
+
+        let (block, _) = crate::block::BlockReader::parse(&bytes, crate::header::HEADER_SIZE)
+            .expect("data block should parse");
+        assert_eq!(block.block_type, BlockType::Data);
+        assert_eq!(block.compression, CompressionType::None);
+
+        let mut dec = crate::decoder::Decoder::new(&bytes);
+        let values = dec.decode_all_owned().expect("decode should succeed");
+        assert_eq!(values.len(), 1);
     }
 }

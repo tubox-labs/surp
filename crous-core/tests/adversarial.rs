@@ -95,7 +95,19 @@ fn decode_header_plus_random_garbage() {
         &[0x00],
         &[0x01, 0x80, 0x80, 0x80],
         &[0x01, 0x05, 0x00], // truncated block
-        &[BlockType::Data as u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], // empty data block
+        &[
+            BlockType::Data as u8,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+        ], // empty data block
     ] {
         let mut input = data.clone();
         input.extend_from_slice(garbage);
@@ -141,7 +153,10 @@ fn decode_block_with_wrong_checksum() {
     if cksum_offset + 8 <= bytes.len() {
         bytes[cksum_offset] ^= 0xFF;
         let mut dec = Decoder::new(&bytes);
-        assert!(matches!(dec.decode_next(), Err(CrousError::ChecksumMismatch { .. })));
+        assert!(matches!(
+            dec.decode_next(),
+            Err(CrousError::ChecksumMismatch { .. })
+        ));
     }
 }
 
@@ -364,12 +379,12 @@ fn roundtrip_unicode_stress() {
     let strings = vec![
         "こんにちは世界",
         "🎉🎊🎈",
-        "\u{0000}", // null char in UTF-8
-        "\u{FEFF}", // BOM
-        "𝕳𝖊𝖑𝖑𝖔", // Mathematical Fraktur
+        "\u{0000}",                     // null char in UTF-8
+        "\u{FEFF}",                     // BOM
+        "𝕳𝖊𝖑𝖑𝖔",                        // Mathematical Fraktur
         "\u{202E}RLO override\u{202C}", // bidi override
-        "a\u{0300}", // combining accent
-        "\u{10FFFF}", // max unicode code point
+        "a\u{0300}",                    // combining accent
+        "\u{10FFFF}",                   // max unicode code point
     ];
     for s in strings {
         let val = Value::Str(s.to_string());
@@ -503,7 +518,7 @@ fn text_parse_never_panics_on_garbage() {
         "{ key: }",
         "{ : value; }",
         "{ key value; }",
-        "{ key: value }",  // missing semicolon
+        "{ key: value }", // missing semicolon
         r#"{ key: "unterminated }"#,
         "\"\\",
         "b64#;",
@@ -523,9 +538,9 @@ fn text_parse_never_panics_on_garbage() {
         "truefalse",
         "nullnull",
         "\x00",
-        "\u{FEFF}", // BOM
-        "{ \"a\": 1; \"a\": 2; }", // duplicate keys
-        &"[".repeat(1000), // deeply nested opens
+        "\u{FEFF}",                           // BOM
+        "{ \"a\": 1; \"a\": 2; }",            // duplicate keys
+        &"[".repeat(1000),                    // deeply nested opens
         &format!("[{}]", "1,".repeat(10000)), // huge array
     ];
 
@@ -579,9 +594,10 @@ fn text_pretty_print_then_reparse_identity() {
         Value::Array(vec![Value::UInt(1), Value::Str("two".into()), Value::Null]),
         Value::Object(vec![
             ("key".into(), Value::UInt(1)),
-            ("nested".into(), Value::Object(vec![
-                ("inner".into(), Value::Bool(true)),
-            ])),
+            (
+                "nested".into(),
+                Value::Object(vec![("inner".into(), Value::Bool(true))]),
+            ),
         ]),
     ];
 
@@ -702,7 +718,10 @@ fn all_wire_types_zero_copy_roundtrip() {
         ("str".into(), Value::Str("hello".into())),
         ("bytes".into(), Value::Bytes(vec![1, 2, 3])),
         ("array".into(), Value::Array(vec![Value::UInt(1)])),
-        ("nested_obj".into(), Value::Object(vec![("k".into(), Value::Null)])),
+        (
+            "nested_obj".into(),
+            Value::Object(vec![("k".into(), Value::Null)]),
+        ),
     ]);
     let mut enc = Encoder::new();
     enc.encode_value(&val).unwrap();
@@ -763,9 +782,15 @@ fn skip_value_all_types() {
         ("uint".into(), Value::UInt(u64::MAX)),
         ("int".into(), Value::Int(i64::MIN)),
         ("float".into(), Value::Float(f64::INFINITY)),
-        ("str".into(), Value::Str("hello world this is a test".into())),
+        (
+            "str".into(),
+            Value::Str("hello world this is a test".into()),
+        ),
         ("bytes".into(), Value::Bytes(vec![0; 100])),
-        ("arr".into(), Value::Array(vec![Value::UInt(1), Value::UInt(2)])),
+        (
+            "arr".into(),
+            Value::Array(vec![Value::UInt(1), Value::UInt(2)]),
+        ),
         ("obj".into(), Value::Object(vec![("k".into(), Value::Null)])),
     ]);
     let mut enc = Encoder::new();
@@ -835,9 +860,10 @@ fn zero_copy_and_owned_produce_same_result() {
         Value::Str("hello".into()),
         Value::Bytes(vec![1, 2, 3]),
         Value::Array(vec![Value::UInt(1), Value::Str("two".into())]),
-        Value::Object(vec![
-            ("key".into(), Value::Array(vec![Value::Null, Value::Bool(false)])),
-        ]),
+        Value::Object(vec![(
+            "key".into(),
+            Value::Array(vec![Value::Null, Value::Bool(false)]),
+        )]),
     ];
 
     for val in &values {
@@ -913,7 +939,10 @@ fn decode_invalid_utf8_string() {
 
     // Both paths should return InvalidUtf8
     let mut dec = Decoder::new(&data);
-    assert!(matches!(dec.decode_next(), Err(CrousError::InvalidUtf8(..))));
+    assert!(matches!(
+        dec.decode_next(),
+        Err(CrousError::InvalidUtf8(..))
+    ));
 
     let mut dec2 = Decoder::new(&data);
     assert!(matches!(

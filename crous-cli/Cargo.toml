@@ -17,9 +17,15 @@ rust-version.workspace = true
 name = "crous"
 path = "src/main.rs"
 
+[features]
+default = []
+zstd = ["crous-core/zstd"]
+lz4 = ["crous-core/lz4"]
+snappy = ["crous-core/snappy"]
+
 [dependencies]
 crous-core = { workspace = true }
-crous-compression = { workspace = true }
-clap = { workspace = true }
+clap = { workspace = true, features = ["env"] }
+serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

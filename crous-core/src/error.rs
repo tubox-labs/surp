@@ -72,7 +72,9 @@ pub enum CrousError {
     #[error("Invalid reference: index {0} out of bounds (dictionary has {1} entries)")]
     InvalidReference(usize, usize),
 
-    #[error("Decompression ratio {ratio:.1}:1 exceeds maximum {max_ratio}:1 (compressed: {compressed}, uncompressed: {uncompressed})")]
+    #[error(
+        "Decompression ratio {ratio:.1}:1 exceeds maximum {max_ratio}:1 (compressed: {compressed}, uncompressed: {uncompressed})"
+    )]
     DecompressionRatioExceeded {
         ratio: f64,
         max_ratio: usize,

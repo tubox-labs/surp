@@ -55,11 +55,14 @@ fn concurrent_encode_decode_100_threads() {
                 let val = Value::Object(vec![
                     ("id".into(), Value::UInt(i)),
                     ("name".into(), Value::Str(format!("thread-{i}"))),
-                    ("data".into(), Value::Array(vec![
-                        Value::UInt(i * 10),
-                        Value::Float(i as f64 * 0.1),
-                        Value::Bool(i % 2 == 0),
-                    ])),
+                    (
+                        "data".into(),
+                        Value::Array(vec![
+                            Value::UInt(i * 10),
+                            Value::Float(i as f64 * 0.1),
+                            Value::Bool(i % 2 == 0),
+                        ]),
+                    ),
                 ]);
 
                 for _ in 0..100 {
@@ -263,14 +266,15 @@ fn large_binary_5mb() {
 fn mixed_payload_sizes() {
     // Simulate a realistic stream: tiny, small, medium, large values
     let values = vec![
-        Value::Null,                                           // 1 byte
-        Value::Bool(true),                                     // 2 bytes
-        Value::UInt(42),                                       // 2 bytes
-        Value::Str("short".into()),                            // ~8 bytes
-        Value::Str("a".repeat(1000)),                          // ~1 KB
-        Value::Bytes(vec![0xAB; 10_000]),                      // 10 KB
-        Value::Array(vec![Value::UInt(1); 1000]),               // ~2 KB
-        Value::Object(                                         // ~5 KB
+        Value::Null,                              // 1 byte
+        Value::Bool(true),                        // 2 bytes
+        Value::UInt(42),                          // 2 bytes
+        Value::Str("short".into()),               // ~8 bytes
+        Value::Str("a".repeat(1000)),             // ~1 KB
+        Value::Bytes(vec![0xAB; 10_000]),         // 10 KB
+        Value::Array(vec![Value::UInt(1); 1000]), // ~2 KB
+        Value::Object(
+            // ~5 KB
             (0..100)
                 .map(|i| (format!("k{i}"), Value::Str(format!("v{i}"))))
                 .collect(),
@@ -347,9 +351,7 @@ fn dedup_with_many_unique_strings() {
 #[test]
 fn dedup_with_all_identical_strings() {
     // Edge case: every string is the same
-    let items: Vec<Value> = (0..500)
-        .map(|_| Value::Str("identical".into()))
-        .collect();
+    let items: Vec<Value> = (0..500).map(|_| Value::Str("identical".into())).collect();
     let val = Value::Array(items);
 
     let mut enc_dedup = Encoder::new();
@@ -377,9 +379,7 @@ fn dedup_with_all_identical_strings() {
 #[test]
 fn dedup_empty_strings() {
     // Edge case: dedup with empty strings
-    let items: Vec<Value> = (0..10)
-        .map(|_| Value::Str(String::new()))
-        .collect();
+    let items: Vec<Value> = (0..10).map(|_| Value::Str(String::new())).collect();
     let val = Value::Array(items);
 
     let mut enc = Encoder::new();

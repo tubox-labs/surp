@@ -2,3 +2,13 @@
 bench/results/
 __pycache__/
 *.pyc
+env/
+.venv/
+.idea/
+.vscode/
+.DS_Store
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
