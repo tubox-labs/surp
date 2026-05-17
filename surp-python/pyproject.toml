@@ -6,6 +6,7 @@ build-backend = "maturin"
 name = "surp"
 version = "1.0.0"
 description = "Native Rust-backed Surp encoder/decoder with RFC-001 CTN/CBF/CQL support"
+readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT OR Apache-2.0"
 authors = [
@@ -41,6 +42,11 @@ manifest-path = "Cargo.toml"
 python-source = "python"
 module-name = "surp._surp_native"
 include = [
+    { path = "README.md", format = "sdist" },
+    { path = "LICENSE-MIT", format = "sdist" },
+    { path = "LICENSE-APACHE", format = "sdist" },
+    { path = "LICENSE-MIT", format = "wheel" },
+    { path = "LICENSE-APACHE", format = "wheel" },
     { path = "python/surp/**/*.py", format = "sdist" },
     { path = "python/surp/**/*.py", format = "wheel" },
     { path = "python/surp/**/*.pyi", format = "sdist" },

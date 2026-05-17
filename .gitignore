@@ -12,3 +12,8 @@ env/
 *.bak
 *.swp
 *.swo
+dist/
+build/
+*.egg-info/
+*.egg
+.maturin/
