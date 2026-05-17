@@ -51,6 +51,35 @@ def query_ctn(text: str, query: str, *, as_ctn: bool = False) -> list[Any]:
     return _native.rfc_query_ctn(text, query, as_ctn=as_ctn)
 
 
+def parse_ctn_model(text: str) -> Any:
+    """Parse CTN into a native-backed RfcDocument model."""
+    return _native.rfc_parse_ctn_model(text)
+
+
+def decode_cbf_model(data: bytes) -> Any:
+    """Decode CBF into a native-backed RfcDecodedCbf model."""
+    return _native.rfc_decode_cbf_model(data)
+
+
+def query_cbf_model(data: bytes, query: str) -> list[Any]:
+    """Run CQL over CBF and return native-backed RfcValue models."""
+    return _native.rfc_query_cbf_model(data, query)
+
+
+def query_ctn_model(text: str, query: str) -> list[Any]:
+    """Run CQL over CTN and return native-backed RfcValue models."""
+    return _native.rfc_query_ctn_model(text, query)
+
+
+RfcAnnotation = _native.RfcAnnotation
+RfcField = _native.RfcField
+RfcBinding = _native.RfcBinding
+RfcHeader = _native.RfcHeader
+RfcDocument = _native.RfcDocument
+RfcDecodedCbf = _native.RfcDecodedCbf
+RfcValue = _native.RfcValue
+
+
 __all__ = [
     "CBF_MAGIC",
     "CBF_HEADER_SIZE",
@@ -61,4 +90,15 @@ __all__ = [
     "cbf_to_ctn",
     "query_cbf",
     "query_ctn",
+    "parse_ctn_model",
+    "decode_cbf_model",
+    "query_cbf_model",
+    "query_ctn_model",
+    "RfcAnnotation",
+    "RfcField",
+    "RfcBinding",
+    "RfcHeader",
+    "RfcDocument",
+    "RfcDecodedCbf",
+    "RfcValue",
 ]

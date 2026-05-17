@@ -32,8 +32,12 @@ encode_to_file = _native.encode_to_file
 decode_from_file = _native.decode_from_file
 parse_text = _native.parse_text
 pretty_print = _native.pretty_print
+to_value = _native.to_value
+loads_value = _native.loads_value
+parse_text_value = _native.parse_text_value
 Encoder = _native.Encoder
 SurpDecoder = _native.SurpDecoder
+SurpValue = _native.SurpValue
 
 __all__ = [
     "__version__",
@@ -47,8 +51,12 @@ __all__ = [
     "decode_from_file",
     "parse_text",
     "pretty_print",
+    "to_value",
+    "loads_value",
+    "parse_text_value",
     "Encoder",
     "SurpDecoder",
+    "SurpValue",
     "SurpError",
     "SurpEncodeError",
     "SurpDecodeError",
