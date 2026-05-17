@@ -1,0 +1,4 @@
+interface:
+  display_name: "Surp Python Package"
+  short_description: "Maintain Surp PyO3 Python package"
+  default_prompt: "Use $surp-python-package to update the Rust-backed Surp Python package and packaging metadata."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Surp Rust Codec"
+  short_description: "Maintain Surp v1 Rust codec APIs"
+  default_prompt: "Use $surp-rust-codec to update the Surp v1 codec while preserving wire compatibility."
