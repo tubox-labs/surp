@@ -10,7 +10,7 @@ except ImportError as exc:  # pragma: no cover - import-time installation guard
         "package with maturin before importing surp."
     ) from exc
 
-from . import rfc001
+from . import model, rfc001
 from .exceptions import (
     SurpChecksumError,
     SurpDecodeError,
@@ -63,5 +63,6 @@ __all__ = [
     "SurpChecksumError",
     "SurpTypeError",
     "SurpRfcError",
+    "model",
     "rfc001",
 ]

@@ -3,6 +3,7 @@ from __future__ import annotations
 from os import PathLike
 from typing import Any, BinaryIO, Union, overload
 
+from . import model as model
 from . import rfc001 as rfc001
 from ._types import Compression
 from .exceptions import (

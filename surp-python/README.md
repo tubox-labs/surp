@@ -79,6 +79,29 @@ user = doc.effective_root()
 assert user["name"].scalar_value == "Alice"
 ```
 
+## RFC-001 Model Schemas
+
+`surp.model` provides a declarative validation layer for RFC-001 products and
+documents. Model classes use explicit RFC-001 type markers and encode through
+`surp.rfc001.compile_ctn()`.
+
+```python
+from surp.model import Field, SurpModel
+from surp.model.types import Bool, Int64, SeqOf, Str
+
+
+class User(SurpModel):
+    name: Str = Field(required=True)
+    age: Int64 = Field(required=False, default=0)
+    active: Bool = Field(required=True)
+    tags: SeqOf[Str] = Field(required=False, default_factory=list)
+
+
+user = User(name="Alice", active=True, tags=["admin"])
+cbf = user.to_cbf()
+assert User.from_cbf(cbf) == user
+```
+
 ## Typing
 
 The wheel includes `.pyi` stubs and `py.typed` for type checkers.
