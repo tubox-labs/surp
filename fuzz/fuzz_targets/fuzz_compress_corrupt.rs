@@ -34,14 +34,14 @@ enum SimpleValue {
 }
 
 impl SimpleValue {
-    fn to_value(&self) -> crous_core::Value {
+    fn to_value(&self) -> surp_core::Value {
         match self {
-            SimpleValue::Null => crous_core::Value::Null,
-            SimpleValue::Bool(b) => crous_core::Value::Bool(*b),
-            SimpleValue::UInt(n) => crous_core::Value::UInt(*n),
-            SimpleValue::Int(n) => crous_core::Value::Int(*n),
-            SimpleValue::Str(s) => crous_core::Value::Str(s.clone()),
-            SimpleValue::Bytes(b) => crous_core::Value::Bytes(b.clone()),
+            SimpleValue::Null => surp_core::Value::Null,
+            SimpleValue::Bool(b) => surp_core::Value::Bool(*b),
+            SimpleValue::UInt(n) => surp_core::Value::UInt(*n),
+            SimpleValue::Int(n) => surp_core::Value::Int(*n),
+            SimpleValue::Str(s) => surp_core::Value::Str(s.clone()),
+            SimpleValue::Bytes(b) => surp_core::Value::Bytes(b.clone()),
         }
     }
 }
@@ -52,15 +52,15 @@ fuzz_target!(|input: CompressCorruptInput| {
     }
 
     let compression = match input.compression % 4 {
-        0 => crous_core::wire::CompressionType::None,
-        1 => crous_core::wire::CompressionType::Zstd,
-        2 => crous_core::wire::CompressionType::Lz4,
-        3 => crous_core::wire::CompressionType::Snappy,
+        0 => surp_core::wire::CompressionType::None,
+        1 => surp_core::wire::CompressionType::Zstd,
+        2 => surp_core::wire::CompressionType::Lz4,
+        3 => surp_core::wire::CompressionType::Snappy,
         _ => unreachable!(),
     };
 
     // Encode
-    let mut enc = crous_core::Encoder::new();
+    let mut enc = surp_core::Encoder::new();
     enc.set_compression(compression);
     if input.dedup {
         enc.enable_dedup();
@@ -78,7 +78,7 @@ fuzz_target!(|input: CompressCorruptInput| {
     };
 
     // First verify uncorrupted roundtrip works
-    let mut dec = crous_core::Decoder::new(&bytes);
+    let mut dec = surp_core::Decoder::new(&bytes);
     let originals = match dec.decode_all_owned() {
         Ok(v) => v,
         Err(_) => return, // Encoding edge case
@@ -93,12 +93,12 @@ fuzz_target!(|input: CompressCorruptInput| {
         }
 
         // Decode corrupted data — MUST NOT PANIC
-        let mut dec = crous_core::Decoder::new(&bytes);
+        let mut dec = surp_core::Decoder::new(&bytes);
         let _ = dec.decode_all_owned();
 
         // Also try with strict limits
-        let strict = crous_core::Limits::strict();
-        let mut dec = crous_core::Decoder::with_limits(&bytes, strict);
+        let strict = surp_core::Limits::strict();
+        let mut dec = surp_core::Decoder::with_limits(&bytes, strict);
         let _ = dec.decode_all_owned();
     }
 });

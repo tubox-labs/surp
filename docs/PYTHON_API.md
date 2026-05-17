@@ -1,4 +1,4 @@
-# Crous — Python API Documentation
+# Surp — Python API Documentation
 
 > A compact, canonical binary serializer and human-readable alternative to JSON.
 
@@ -25,7 +25,7 @@
 5. [Native Extension API (PyO3)](#native-extension-api-pyo3)
    - [encode / decode](#native-encode--decode)
    - [Encoder Class](#native-encoder-class)
-   - [CrousDecoder Class](#native-crousdecoder-class)
+   - [SurpDecoder Class](#native-surpdecoder-class)
 6. [Interoperability](#interoperability)
 7. [Performance Notes](#performance-notes)
 
@@ -33,12 +33,12 @@
 
 ## Overview
 
-Crous provides two Python packages:
+Surp provides two Python packages:
 
 | Package | Type | Import | Description |
 |---------|------|--------|-------------|
-| `crous` | Pure Python | `import crous` | Full-featured encoder, decoder, text parser, and all utilities. Zero external dependencies for core functionality. |
-| `_crous_native` | PyO3 extension | `import _crous_native` | Rust-backed high-performance encoder/decoder. Built with `maturin`. |
+| `surp` | Pure Python | `import surp` | Full-featured encoder, decoder, text parser, and all utilities. Zero external dependencies for core functionality. |
+| `_surp_native` | PyO3 extension | `import _surp_native` | Rust-backed high-performance encoder/decoder. Built with `maturin`. |
 
 Both produce **wire-compatible** output — data encoded with one can be decoded by the other, and by the Rust library.
 
@@ -54,7 +54,7 @@ pip install -e .
 ### Native Extension (PyO3)
 
 ```bash
-cd crous-python/
+cd surp-python/
 pip install maturin
 maturin develop --release
 ```
@@ -66,20 +66,20 @@ maturin develop --release
 ### Pure Python
 
 ```python
-import crous
+import surp
 
 # Encode any Python object
-data = crous.encode({"name": "Alice", "age": 30, "active": True})
+data = surp.encode({"name": "Alice", "age": 30, "active": True})
 
 # Decode back to Python
-obj = crous.decode(data)
+obj = surp.decode(data)
 # → {'name': 'Alice', 'age': 30, 'active': True}
 ```
 
 ### Native Extension
 
 ```python
-import _crous_native as cn
+import _surp_native as cn
 
 data = cn.encode({"name": "Alice", "age": 30})
 obj = cn.decode(data)
@@ -93,23 +93,23 @@ obj = cn.decode(data)
 ### `encode` / `decode`
 
 ```python
-from crous import encode, decode
+from surp import encode, decode
 ```
 
 #### `encode(obj) → bytes`
 
-Encode a Python object to Crous binary format.
+Encode a Python object to Surp binary format.
 
 **Supported types:** `dict`, `list`, `tuple`, `str`, `int`, `float`, `bool`, `None`, `bytes`, `bytearray`.
 
 ```python
 data = encode({"users": [{"name": "Alice"}, {"name": "Bob"}]})
-assert data[:7] == b"CROUSv1"
+assert data[0] == 0x01  # Data block
 ```
 
 #### `decode(data) → object`
 
-Decode Crous binary bytes back to a native Python object.
+Decode Surp binary bytes back to a native Python object.
 
 Returns a single value if the data contains one top-level value, or a list otherwise.
 
@@ -123,10 +123,10 @@ assert obj == {"users": [{"name": "Alice"}, {"name": "Bob"}]}
 ### `Value`
 
 ```python
-from crous.value import Value, ValueType
+from surp.value import Value, ValueType
 ```
 
-The `Value` class provides explicit type discrimination matching the Crous wire format. This ensures lossless round-trips (e.g., `uint` vs `int`).
+The `Value` class provides explicit type discrimination matching the Surp wire format. This ensures lossless round-trips (e.g., `uint` vs `int`).
 
 #### Constructors
 
@@ -154,7 +154,7 @@ The `Value` class provides explicit type discrimination matching the Crous wire 
 
 #### Type Mapping
 
-| Python type | Crous Value | Notes |
+| Python type | Surp Value | Notes |
 |-------------|-------------|-------|
 | `None` | `Null` | |
 | `bool` | `Bool` | Checked before `int` (Python `bool` subclasses `int`) |
@@ -186,7 +186,7 @@ Value.uint(42) == Value.int_(42)   # False (different types!)
 ### `Encoder`
 
 ```python
-from crous.encoder import Encoder, Limits
+from surp.encoder import Encoder, Limits
 ```
 
 #### Basic Usage
@@ -222,7 +222,6 @@ Encoder(limits: Limits | None = None)
 | `encode_value(value: Value)` | Encode a Value into the current block |
 | `enable_dedup()` | Enable string deduplication |
 | `set_compression(CompressionType)` | Set block compression type |
-| `set_flags(int)` | Set file header flags |
 | `flush_block() → int` | Flush current block, return bytes written |
 | `finish() → bytes` | Finalize and return complete binary output |
 | `current_size() → int` | Current output size including unflushed data |
@@ -232,7 +231,7 @@ Encoder(limits: Limits | None = None)
 ### `Decoder`
 
 ```python
-from crous.decoder import Decoder
+from surp.decoder import Decoder
 ```
 
 #### Basic Usage
@@ -262,7 +261,6 @@ Decoder(data: bytes | bytearray | memoryview, limits: Limits | None = None)
 |--------|-------------|
 | `decode_next() → Value` | Decode the next value (reads blocks automatically) |
 | `decode_all() → list[Value]` | Decode all remaining values |
-| `header() → dict` | Parse and return the file header |
 
 #### Properties
 
@@ -273,7 +271,6 @@ Decoder(data: bytes | bytearray | memoryview, limits: Limits | None = None)
 
 #### Behavior
 
-- Automatically reads the `CROUSv1` header on first decode.
 - Verifies XXH64 checksums on each block.
 - Resolves `Reference` wire types from the per-block string dictionary.
 - Enforces all `Limits` (nesting depth, memory, block size, string length, item count).
@@ -284,12 +281,12 @@ Decoder(data: bytes | bytearray | memoryview, limits: Limits | None = None)
 ### `Text Format`
 
 ```python
-from crous.text import parse, pretty_print
+from surp.text import parse, pretty_print
 ```
 
 #### `parse(text: str) → Value`
 
-Parse a Crous text document into a `Value`.
+Parse a Surp text document into a `Value`.
 
 ```python
 v = parse('{ name: "Alice"; age: 30; scores: [100, 95]; }')
@@ -297,7 +294,7 @@ v = parse('{ name: "Alice"; age: 30; scores: [100, 95]; }')
 
 #### `pretty_print(value: Value, indent: int = 2) → str`
 
-Pretty-print a `Value` in canonical Crous text notation.
+Pretty-print a `Value` in canonical Surp text notation.
 
 ```python
 text = pretty_print(v, indent=4)
@@ -326,7 +323,7 @@ Comments:  // line   /* block (nested) */
 ### `Limits`
 
 ```python
-from crous.encoder import Limits
+from surp.encoder import Limits
 ```
 
 ```python
@@ -352,7 +349,7 @@ Both `Encoder` and `Decoder` accept an optional `limits` parameter.
 ### `Wire Types`
 
 ```python
-from crous.wire import WireType, BlockType, CompressionType
+from surp.wire import WireType, BlockType, CompressionType
 ```
 
 #### `WireType` (enum)
@@ -395,7 +392,7 @@ from crous.wire import WireType, BlockType, CompressionType
 ### `Varint Utilities`
 
 ```python
-from crous.varint import (
+from surp.varint import (
     encode_varint, decode_varint,
     zigzag_encode, zigzag_decode,
     encode_signed_varint, decode_signed_varint,
@@ -416,7 +413,7 @@ from crous.varint import (
 ### `Checksum Utilities`
 
 ```python
-from crous.checksum import compute_xxh64, verify_xxh64
+from surp.checksum import compute_xxh64, verify_xxh64
 ```
 
 | Function | Description |
@@ -436,9 +433,9 @@ assert compute_xxh64(b"hello") == 0x26C7827D889F6DA3
 ### `Errors`
 
 ```python
-from crous.error import (
-    CrousError,            # Base class
-    InvalidMagicError,     # Bad file header
+from surp.error import (
+    SurpError,            # Base class
+    InvalidMagicError,     # Bad magic in formats that use magic bytes
     ChecksumMismatchError, # Block checksum failed
     NestingTooDeepError,   # Exceeded max_nesting_depth
     UnexpectedEofError,    # Truncated input
@@ -446,23 +443,23 @@ from crous.error import (
 )
 ```
 
-All errors inherit from `CrousError`.
+All errors inherit from `SurpError`.
 
 ---
 
 ## Native Extension API (PyO3)
 
-The `_crous_native` module provides Rust-backed encoding/decoding for maximum performance.
+The `_surp_native` module provides Rust-backed encoding/decoding for maximum performance.
 
 ```python
-import _crous_native as cn
+import _surp_native as cn
 ```
 
 ### Native `encode` / `decode`
 
 #### `cn.encode(obj) → bytes`
 
-Encode a Python object to Crous binary. Accepts: `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, `bytes`.
+Encode a Python object to Surp binary. Accepts: `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, `bytes`.
 
 ```python
 data = cn.encode({"name": "Alice", "age": 30})
@@ -472,7 +469,7 @@ Raises `TypeError` for unsupported types, `RuntimeError` for encoding errors.
 
 #### `cn.decode(data: bytes) → object`
 
-Decode Crous binary back to Python objects. Returns a single value if one top-level value, otherwise a list.
+Decode Surp binary back to Python objects. Returns a single value if one top-level value, otherwise a list.
 
 ```python
 obj = cn.decode(data)  # → {'name': 'Alice', 'age': 30}
@@ -500,10 +497,10 @@ data = enc.finish()
 # enc.encode(...) → RuntimeError: encoder already finished
 ```
 
-### Native `CrousDecoder` Class
+### Native `SurpDecoder` Class
 
 ```python
-dec = cn.CrousDecoder(data)
+dec = cn.SurpDecoder(data)
 ```
 
 | Method | Description |
@@ -511,7 +508,7 @@ dec = cn.CrousDecoder(data)
 | `decode_all() → list` | Decode all values. **Decoder is consumed.** |
 
 ```python
-dec = cn.CrousDecoder(data)
+dec = cn.SurpDecoder(data)
 values = dec.decode_all()  # list of Python objects
 # dec.decode_all() → RuntimeError: decoder already consumed
 ```
@@ -526,16 +523,16 @@ Data encoded by one implementation can be decoded by any other:
 
 ```python
 # Pure Python → Native Rust
-import crous
-import _crous_native as cn
+import surp
+import _surp_native as cn
 
-data_py = crous.encode({"name": "Alice"})
+data_py = surp.encode({"name": "Alice"})
 obj = cn.decode(data_py)
 assert obj == {"name": "Alice"}
 
 # Native Rust → Pure Python
 data_rs = cn.encode({"name": "Bob"})
-obj = crous.decode(data_rs)
+obj = surp.decode(data_rs)
 assert obj == {"name": "Bob"}
 ```
 
@@ -545,9 +542,9 @@ Both implementations produce compatible dedup-encoded output:
 
 ```python
 # Python dedup
-import crous
-from crous.encoder import Encoder
-from crous.value import Value
+import surp
+from surp.encoder import Encoder
+from surp.value import Value
 
 enc = Encoder()
 enc.enable_dedup()
@@ -555,18 +552,14 @@ enc.encode_value(Value.array([Value.str_("x"), Value.str_("x")]))
 data = enc.finish()
 
 # Rust decode
-import _crous_native as cn
+import _surp_native as cn
 assert cn.decode(data) == ["x", "x"]
 ```
 
 ### Wire Format
 
-The file always starts with `b"CROUSv1"` (7 bytes) + flags byte, making it trivial to detect:
-
-```python
-def is_crous(data: bytes) -> bool:
-    return data[:7] == b"CROUSv1"
-```
+Surp binary data starts directly with a block header:
+`block_type(1) | length(varint) | compression(1) | checksum(8) | payload`.
 
 ---
 
@@ -580,10 +573,10 @@ The pure Python implementation is fully functional and spec-compliant but optimi
 | Decode small dict | ~80 µs | ~4 µs | ~20× |
 | Encode 1000 objects | ~50 ms | ~2 ms | ~25× |
 
-The native extension uses the same `crous-core` Rust library that powers the CLI and FFI bindings, ensuring identical behavior and wire format compatibility.
+The native extension uses the same `surp-core` Rust library that powers the CLI and FFI bindings, ensuring identical behavior and wire format compatibility.
 
-**Recommendation:** Use `_crous_native` (via `maturin develop`) for production workloads. Use `crous` (pure Python) for learning, debugging, prototyping, and environments where a Rust toolchain is unavailable.
+**Recommendation:** Use `_surp_native` (via `maturin develop`) for production workloads. Use `surp` (pure Python) for learning, debugging, prototyping, and environments where a Rust toolchain is unavailable.
 
 ---
 
-*Generated from Crous v1.1.0 Python codebase. See `docs/SPEC.md` for the full wire format specification.*
+*Generated from Surp v1.1.0 Python codebase. See `docs/SPEC.md` for the full wire format specification.*

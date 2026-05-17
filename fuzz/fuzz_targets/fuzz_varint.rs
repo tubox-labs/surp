@@ -11,7 +11,7 @@ use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
     // Try decoding arbitrary bytes — must not panic.
-    let _ = crous_core::varint::decode_varint(data, 0);
+    let _ = surp_core::varint::decode_varint(data, 0);
 
     // If we have at least 8 bytes, interpret them as a u64 and roundtrip.
     if data.len() >= 8 {
@@ -19,15 +19,15 @@ fuzz_target!(|data: &[u8]| {
 
         // Unsigned roundtrip
         let mut buf = Vec::new();
-        crous_core::varint::encode_varint_vec(value, &mut buf);
+        surp_core::varint::encode_varint_vec(value, &mut buf);
         let (decoded, _) =
-            crous_core::varint::decode_varint(&buf, 0).expect("valid varint");
+            surp_core::varint::decode_varint(&buf, 0).expect("valid varint");
         assert_eq!(value, decoded);
 
         // Signed roundtrip (zigzag)
         let signed = value as i64;
-        let encoded = crous_core::varint::zigzag_encode(signed);
-        let decoded = crous_core::varint::zigzag_decode(encoded);
+        let encoded = surp_core::varint::zigzag_encode(signed);
+        let decoded = surp_core::varint::zigzag_decode(encoded);
         assert_eq!(signed, decoded);
     }
 });

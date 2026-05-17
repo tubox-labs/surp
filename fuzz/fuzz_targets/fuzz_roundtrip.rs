@@ -10,7 +10,7 @@
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 
-/// A structured input that maps to a Crous `Value`.
+/// A structured input that maps to a Surp `Value`.
 #[derive(Debug, Arbitrary)]
 enum FuzzValue {
     Null,
@@ -25,19 +25,19 @@ enum FuzzValue {
 }
 
 impl FuzzValue {
-    fn to_value(&self) -> crous_core::Value {
+    fn to_value(&self) -> surp_core::Value {
         match self {
-            FuzzValue::Null => crous_core::Value::Null,
-            FuzzValue::Bool(b) => crous_core::Value::Bool(*b),
-            FuzzValue::UInt(n) => crous_core::Value::UInt(*n),
-            FuzzValue::Int(n) => crous_core::Value::Int(*n),
-            FuzzValue::Float(f) => crous_core::Value::Float(*f),
-            FuzzValue::Str(s) => crous_core::Value::Str(s.clone()),
-            FuzzValue::Bytes(b) => crous_core::Value::Bytes(b.clone()),
+            FuzzValue::Null => surp_core::Value::Null,
+            FuzzValue::Bool(b) => surp_core::Value::Bool(*b),
+            FuzzValue::UInt(n) => surp_core::Value::UInt(*n),
+            FuzzValue::Int(n) => surp_core::Value::Int(*n),
+            FuzzValue::Float(f) => surp_core::Value::Float(*f),
+            FuzzValue::Str(s) => surp_core::Value::Str(s.clone()),
+            FuzzValue::Bytes(b) => surp_core::Value::Bytes(b.clone()),
             FuzzValue::Array(arr) => {
                 // Limit nesting depth implicitly by limiting array size
                 let items: Vec<_> = arr.iter().take(32).map(|v| v.to_value()).collect();
-                crous_core::Value::Array(items)
+                surp_core::Value::Array(items)
             }
             FuzzValue::Object(entries) => {
                 let pairs: Vec<_> = entries
@@ -45,7 +45,7 @@ impl FuzzValue {
                     .take(32)
                     .map(|(k, v)| (k.clone(), v.to_value()))
                     .collect();
-                crous_core::Value::Object(pairs)
+                surp_core::Value::Object(pairs)
             }
         }
     }
@@ -55,7 +55,7 @@ fuzz_target!(|input: FuzzValue| {
     let value = input.to_value();
 
     // Encode
-    let mut enc = crous_core::Encoder::new();
+    let mut enc = surp_core::Encoder::new();
     if enc.encode_value(&value).is_err() {
         return; // Nesting too deep, etc. — acceptable
     }
@@ -65,7 +65,7 @@ fuzz_target!(|input: FuzzValue| {
     };
 
     // Decode
-    let mut dec = crous_core::Decoder::new(&bytes);
+    let mut dec = surp_core::Decoder::new(&bytes);
     let decoded = match dec.decode_next_owned() {
         Ok(v) => v,
         Err(e) => {
@@ -78,8 +78,8 @@ fuzz_target!(|input: FuzzValue| {
 });
 
 /// Recursively compare two Values, treating NaN == NaN.
-fn nan_aware_eq(a: &crous_core::Value, b: &crous_core::Value) -> bool {
-    use crous_core::Value;
+fn nan_aware_eq(a: &surp_core::Value, b: &surp_core::Value) -> bool {
+    use surp_core::Value;
     match (a, b) {
         (Value::Null, Value::Null) => true,
         (Value::Bool(x), Value::Bool(y)) => x == y,

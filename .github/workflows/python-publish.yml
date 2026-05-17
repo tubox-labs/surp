@@ -1,10 +1,10 @@
 # ---------------------------------------------------------------------------
-# CI workflow: build crous-native wheels for all platforms and publish to PyPI
+# CI workflow: build surp-native wheels for all platforms and publish to PyPI
 #
 # Triggers:
 #   - Push tag matching "python-v*" (e.g. python-v1.1.0) → full build + PyPI publish
 #   - Manual workflow_dispatch → build only (publish skipped unless release flag set)
-#   - Pull requests touching crous-python/ → build only (smoke test)
+#   - Pull requests touching surp-python/ → build only (smoke test)
 #
 # Matrix:
 #   - Linux   x86_64 + aarch64  (manylinux, musllinux)
@@ -21,8 +21,8 @@ on:
       - "python-v*"
   pull_request:
     paths:
-      - "crous-python/**"
-      - "crous-core/**"
+      - "surp-python/**"
+      - "surp-core/**"
       - ".github/workflows/python-publish.yml"
   workflow_dispatch:
     inputs:
@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Copy README for maturin
-        run: cp README.md crous-python/README.md
+        run: cp README.md surp-python/README.md
 
       - uses: actions/setup-python@v5
         with:
@@ -77,13 +77,13 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: "true"
           manylinux: auto
-          working-directory: crous-python
+          working-directory: surp-python
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.target }}
-          path: crous-python/dist
+          path: surp-python/dist
 
   # -----------------------------------------------------------------------
   # macOS wheels (x86_64 + ARM64, universal2)
@@ -103,7 +103,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Copy README for maturin
-        run: cp README.md crous-python/README.md
+        run: cp README.md surp-python/README.md
 
       - uses: actions/setup-python@v5
         with:
@@ -115,13 +115,13 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
           sccache: "true"
-          working-directory: crous-python
+          working-directory: surp-python
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-macos-${{ matrix.target }}
-          path: crous-python/dist
+          path: surp-python/dist
 
   # -----------------------------------------------------------------------
   # Windows wheels (x86_64)
@@ -133,7 +133,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Copy README for maturin
-        run: copy README.md crous-python\README.md
+        run: copy README.md surp-python\README.md
         shell: cmd
 
       - uses: actions/setup-python@v5
@@ -146,13 +146,13 @@ jobs:
           target: x86_64-pc-windows-msvc
           args: --release --out dist --find-interpreter
           sccache: "true"
-          working-directory: crous-python
+          working-directory: surp-python
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-windows-x86_64
-          path: crous-python/dist
+          path: surp-python/dist
 
   # -----------------------------------------------------------------------
   # Source distribution (sdist) — fallback for unsupported platforms
@@ -164,20 +164,20 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Copy README for maturin
-        run: cp README.md crous-python/README.md
+        run: cp README.md surp-python/README.md
 
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
           command: sdist
           args: --out dist
-          working-directory: crous-python
+          working-directory: surp-python
 
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
           name: wheels-sdist
-          path: crous-python/dist
+          path: surp-python/dist
 
   # -----------------------------------------------------------------------
   # Smoke test — install built wheel and run a quick sanity check
@@ -216,12 +216,12 @@ jobs:
           path: dist
 
       - name: Install wheel
-        run: pip install --find-links dist --no-index --force-reinstall crous-native
+        run: pip install --find-links dist --no-index --force-reinstall surp-native
 
       - name: Smoke test
         run: |
           python -c "
-          import _crous_native as cn
+          import _surp_native as cn
           import os, tempfile
 
           # Module version
@@ -241,12 +241,12 @@ jobs:
           assert cn.decode(buf) == [1, 2, 3]
 
           # Decoder class
-          dec = cn.CrousDecoder(data)
+          dec = cn.SurpDecoder(data)
           vals = dec.decode_all()
           assert vals[0] == obj
 
           # File I/O roundtrip
-          tmp = os.path.join(tempfile.gettempdir(), 'crous_smoke.crous')
+          tmp = os.path.join(tempfile.gettempdir(), 'surp_smoke.surp')
           cn.encode_to_file(obj, tmp)
           assert os.path.isfile(tmp)
           decoded2 = cn.decode_from_file(tmp)
@@ -280,7 +280,7 @@ jobs:
       || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
     environment:
       name: pypi
-      url: https://pypi.org/project/crous-native/
+      url: https://pypi.org/project/surp-native/
     permissions:
       id-token: write   # for trusted publishing via OIDC
     steps:

@@ -1,5 +1,5 @@
 [package]
-name = "crous-fuzz"
+name = "surp-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-crous-core = { path = "../crous-core" }
+surp-core = { path = "../surp-core" }
 arbitrary = { version = "1", features = ["derive"] }
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
 

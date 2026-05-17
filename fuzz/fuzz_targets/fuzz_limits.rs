@@ -35,7 +35,7 @@ fuzz_target!(|input: LimitsInput| {
     let max_items = (input.max_items as usize).max(1);
     let max_string = (input.max_string as usize).max(1);
 
-    let limits = crous_core::Limits {
+    let limits = surp_core::Limits {
         max_nesting_depth: max_depth,
         max_block_size: 1024 * 1024, // 1 MiB
         max_items,
@@ -44,30 +44,30 @@ fuzz_target!(|input: LimitsInput| {
     };
 
     // Build a value that might violate the limits
-    let mut value = crous_core::Value::Null;
+    let mut value = surp_core::Value::Null;
 
     // Nest arrays
     let nesting = input.nesting as usize;
     for _ in 0..nesting {
-        value = crous_core::Value::Array(vec![value]);
+        value = surp_core::Value::Array(vec![value]);
     }
 
     // Or build a large array
     let num_items = input.num_items as usize;
     if num_items > 0 && nesting == 0 {
-        let items: Vec<crous_core::Value> = (0..num_items.min(5000))
-            .map(|i| crous_core::Value::UInt(i as u64))
+        let items: Vec<surp_core::Value> = (0..num_items.min(5000))
+            .map(|i| surp_core::Value::UInt(i as u64))
             .collect();
-        value = crous_core::Value::Array(items);
+        value = surp_core::Value::Array(items);
     }
 
     // Or use a potentially-long string
     if !input.string.is_empty() && nesting == 0 && num_items == 0 {
-        value = crous_core::Value::Str(input.string.clone());
+        value = surp_core::Value::Str(input.string.clone());
     }
 
     // Encode with default (unlimited-ish) limits
-    let mut enc = crous_core::Encoder::new();
+    let mut enc = surp_core::Encoder::new();
     if enc.encode_value(&value).is_err() {
         return; // Encoder has its own limits
     }
@@ -77,12 +77,12 @@ fuzz_target!(|input: LimitsInput| {
     };
 
     // Decode with the fuzz-controlled limits — must not panic
-    let mut dec = crous_core::Decoder::with_limits(&bytes, limits.clone());
+    let mut dec = surp_core::Decoder::with_limits(&bytes, limits.clone());
     let result_owned = dec.decode_all_owned();
     // It's fine if it returns an error — the point is no panic/OOM.
 
     if input.try_zero_copy {
-        let mut dec = crous_core::Decoder::with_limits(&bytes, limits);
+        let mut dec = surp_core::Decoder::with_limits(&bytes, limits);
         let _ = dec.decode_all();
     }
 
@@ -90,7 +90,7 @@ fuzz_target!(|input: LimitsInput| {
     if let Ok(values) = result_owned {
         if values.len() == 1 {
             // Re-encode and compare
-            let mut enc2 = crous_core::Encoder::new();
+            let mut enc2 = surp_core::Encoder::new();
             if enc2.encode_value(&values[0]).is_ok() {
                 if let Ok(bytes2) = enc2.finish() {
                     assert_eq!(bytes, bytes2, "Non-deterministic encoding");

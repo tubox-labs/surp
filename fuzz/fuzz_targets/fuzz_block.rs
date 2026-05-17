@@ -13,7 +13,7 @@ fuzz_target!(|data: &[u8]| {
     // Try parsing blocks from arbitrary bytes — must not panic.
     let mut offset = 0;
     while offset < data.len() {
-        match crous_core::block::BlockReader::parse(data, offset) {
+        match surp_core::block::BlockReader::parse(data, offset) {
             Ok((block, consumed)) => {
                 // Verify checksum computation doesn't panic.
                 let _ = block.verify_checksum();
@@ -27,7 +27,7 @@ fuzz_target!(|data: &[u8]| {
     }
 
     // Also try decoding with strict limits to ensure DoS resistance.
-    let strict = crous_core::Limits::strict();
-    let mut decoder = crous_core::Decoder::with_limits(data, strict);
+    let strict = surp_core::Limits::strict();
+    let mut decoder = surp_core::Decoder::with_limits(data, strict);
     let _ = decoder.decode_all_owned();
 });

@@ -1,0 +1,31 @@
+[package]
+name = "surp-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
+description = "CLI tool for inspecting, pretty-printing, and converting Surp files"
+documentation = "https://docs.rs/surp-cli"
+keywords = ["serialization", "binary", "cli", "inspect", "surp"]
+categories = ["encoding", "command-line-utilities"]
+rust-version.workspace = true
+
+[[bin]]
+name = "surp"
+path = "src/main.rs"
+
+[features]
+default = []
+zstd = ["surp-core/zstd"]
+lz4 = ["surp-core/lz4"]
+snappy = ["surp-core/snappy"]
+
+[dependencies]
+surp-core = { workspace = true }
+clap = { workspace = true, features = ["env"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

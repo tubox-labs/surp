@@ -1,7 +1,7 @@
-//! Crous Regression Benchmark Harness
+//! Surp Regression Benchmark Harness
 //!
 //! Usage:
-//!   cargo run -p crous-bench --release -- [OPTIONS]
+//!   cargo run -p surp-bench --release -- [OPTIONS]
 //!
 //! Modes:
 //!   --mode ci       Fast CI mode (reduced datasets, 3 runs)   [default]
@@ -19,13 +19,13 @@ use std::path::PathBuf;
 use chrono::Utc;
 use clap::Parser;
 
-use crous_bench::datasets;
-use crous_bench::metrics::{self, BenchReport, RegressionThresholds, Severity, SystemInfo};
-use crous_bench::report;
-use crous_bench::runner;
+use surp_bench::datasets;
+use surp_bench::metrics::{self, BenchReport, RegressionThresholds, Severity, SystemInfo};
+use surp_bench::report;
+use surp_bench::runner;
 
 #[derive(Parser)]
-#[command(name = "crous-bench", about = "Crous regression benchmark harness")]
+#[command(name = "surp-bench", about = "Surp regression benchmark harness")]
 struct Cli {
     /// Benchmark mode: "ci" (fast) or "full" (deep).
     #[arg(long, default_value = "ci")]
@@ -67,7 +67,7 @@ fn main() {
     });
 
     eprintln!("╔══════════════════════════════════════════════════════════╗");
-    eprintln!("║  Crous Regression Benchmark — {mode_label} mode                  ║");
+    eprintln!("║  Surp Regression Benchmark — {mode_label} mode                  ║");
     eprintln!("╚══════════════════════════════════════════════════════════╝");
     eprintln!();
     eprintln!("  Version:    {version}");

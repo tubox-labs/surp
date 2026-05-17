@@ -30,17 +30,17 @@ fuzz_target!(|input: DedupInput| {
     }
 
     // Build values from the string pool (creating intentional duplicates)
-    let values: Vec<crous_core::Value> = input
+    let values: Vec<surp_core::Value> = input
         .value_indices
         .iter()
         .map(|idx| {
             let s = &input.string_pool[(*idx as usize) % input.string_pool.len()];
-            crous_core::Value::Str(s.clone())
+            surp_core::Value::Str(s.clone())
         })
         .collect();
 
     // Encode with dedup enabled
-    let mut enc = crous_core::Encoder::new();
+    let mut enc = surp_core::Encoder::new();
     enc.enable_dedup();
     for v in &values {
         if enc.encode_value(v).is_err() {
@@ -53,7 +53,7 @@ fuzz_target!(|input: DedupInput| {
     };
 
     // Decode and verify roundtrip
-    let mut dec = crous_core::Decoder::new(&bytes);
+    let mut dec = surp_core::Decoder::new(&bytes);
     match dec.decode_all_owned() {
         Ok(decoded) => {
             assert_eq!(
@@ -71,7 +71,7 @@ fuzz_target!(|input: DedupInput| {
     }
 
     // Encode without dedup for comparison
-    let mut enc_no_dedup = crous_core::Encoder::new();
+    let mut enc_no_dedup = surp_core::Encoder::new();
     for v in &values {
         if enc_no_dedup.encode_value(v).is_err() {
             return;
@@ -83,7 +83,7 @@ fuzz_target!(|input: DedupInput| {
     };
 
     // Verify non-dedup also roundtrips correctly
-    let mut dec2 = crous_core::Decoder::new(&bytes_no_dedup);
+    let mut dec2 = surp_core::Decoder::new(&bytes_no_dedup);
     match dec2.decode_all_owned() {
         Ok(decoded2) => {
             assert_eq!(decoded2.len(), values.len());
@@ -104,7 +104,7 @@ fuzz_target!(|input: DedupInput| {
             corrupted[i] = *val;
         }
         // Must not panic
-        let mut dec3 = crous_core::Decoder::new(&corrupted);
+        let mut dec3 = surp_core::Decoder::new(&corrupted);
         let _ = dec3.decode_all_owned();
     }
 });

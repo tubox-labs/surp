@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use crous_core::{Decoder, Encoder, Value};
+use surp_core::{Decoder, Encoder, Value};
 
 use crate::datasets::Dataset;
 use crate::metrics::Measurement;
@@ -14,16 +14,16 @@ const WARMUP: usize = 3;
 pub fn run_dataset(dataset: &Dataset, iterations: usize) -> Vec<Measurement> {
     let mut results = Vec::new();
 
-    // ── Crous ────────────────────────────────────────────────────────
-    let crous_bytes = crous_encode_once(&dataset.value);
-    results.push(bench_crous_encode(dataset, iterations, &crous_bytes));
-    results.push(bench_crous_decode(dataset, iterations, &crous_bytes));
-    results.push(bench_crous_roundtrip(dataset, iterations));
+    // ── Surp ────────────────────────────────────────────────────────
+    let surp_bytes = surp_encode_once(&dataset.value);
+    results.push(bench_surp_encode(dataset, iterations, &surp_bytes));
+    results.push(bench_surp_decode(dataset, iterations, &surp_bytes));
+    results.push(bench_surp_roundtrip(dataset, iterations));
 
-    // ── Crous + string dedup ─────────────────────────────────────────
-    let dedup_bytes = crous_encode_dedup_once(&dataset.value);
-    results.push(bench_crous_dedup_encode(dataset, iterations, &dedup_bytes));
-    results.push(bench_crous_dedup_decode(dataset, iterations, &dedup_bytes));
+    // ── Surp + string dedup ─────────────────────────────────────────
+    let dedup_bytes = surp_encode_dedup_once(&dataset.value);
+    results.push(bench_surp_dedup_encode(dataset, iterations, &dedup_bytes));
+    results.push(bench_surp_dedup_decode(dataset, iterations, &dedup_bytes));
 
     // ── JSON (serde_json) ────────────────────────────────────────────
     let json_val: serde_json::Value = (&dataset.value).into();
@@ -60,23 +60,23 @@ pub fn run_dataset(dataset: &Dataset, iterations: usize) -> Vec<Measurement> {
     results
 }
 
-// ── Crous Helpers ───────────────────────────────────────────────────
+// ── Surp Helpers ───────────────────────────────────────────────────
 
-fn crous_encode_once(value: &Value) -> Vec<u8> {
+fn surp_encode_once(value: &Value) -> Vec<u8> {
     let mut enc = Encoder::new();
     enc.encode_value(value).unwrap();
     enc.finish().unwrap()
 }
 
-fn crous_encode_dedup_once(value: &Value) -> Vec<u8> {
+fn surp_encode_dedup_once(value: &Value) -> Vec<u8> {
     let mut enc = Encoder::new();
     enc.enable_dedup();
     enc.encode_value(value).unwrap();
     enc.finish().unwrap()
 }
 
-fn bench_crous_encode(ds: &Dataset, iters: usize, encoded: &[u8]) -> Measurement {
-    let mut m = Measurement::new("crous", ds.name, "encode");
+fn bench_surp_encode(ds: &Dataset, iters: usize, encoded: &[u8]) -> Measurement {
+    let mut m = Measurement::new("surp", ds.name, "encode");
     m.serialized_size = Some(encoded.len());
 
     // Warm up.
@@ -96,8 +96,8 @@ fn bench_crous_encode(ds: &Dataset, iters: usize, encoded: &[u8]) -> Measurement
     m
 }
 
-fn bench_crous_decode(ds: &Dataset, iters: usize, encoded: &[u8]) -> Measurement {
-    let mut m = Measurement::new("crous", ds.name, "decode");
+fn bench_surp_decode(ds: &Dataset, iters: usize, encoded: &[u8]) -> Measurement {
+    let mut m = Measurement::new("surp", ds.name, "decode");
     m.serialized_size = Some(encoded.len());
 
     for _ in 0..WARMUP {
@@ -114,8 +114,8 @@ fn bench_crous_decode(ds: &Dataset, iters: usize, encoded: &[u8]) -> Measurement
     m
 }
 
-fn bench_crous_roundtrip(ds: &Dataset, iters: usize) -> Measurement {
-    let mut m = Measurement::new("crous", ds.name, "roundtrip");
+fn bench_surp_roundtrip(ds: &Dataset, iters: usize) -> Measurement {
+    let mut m = Measurement::new("surp", ds.name, "roundtrip");
 
     for _ in 0..WARMUP {
         let mut enc = Encoder::new();
@@ -137,8 +137,8 @@ fn bench_crous_roundtrip(ds: &Dataset, iters: usize) -> Measurement {
     m
 }
 
-fn bench_crous_dedup_encode(ds: &Dataset, iters: usize, encoded: &[u8]) -> Measurement {
-    let mut m = Measurement::new("crous_dedup", ds.name, "encode");
+fn bench_surp_dedup_encode(ds: &Dataset, iters: usize, encoded: &[u8]) -> Measurement {
+    let mut m = Measurement::new("surp_dedup", ds.name, "encode");
     m.serialized_size = Some(encoded.len());
 
     for _ in 0..WARMUP {
@@ -159,8 +159,8 @@ fn bench_crous_dedup_encode(ds: &Dataset, iters: usize, encoded: &[u8]) -> Measu
     m
 }
 
-fn bench_crous_dedup_decode(ds: &Dataset, iters: usize, encoded: &[u8]) -> Measurement {
-    let mut m = Measurement::new("crous_dedup", ds.name, "decode");
+fn bench_surp_dedup_decode(ds: &Dataset, iters: usize, encoded: &[u8]) -> Measurement {
+    let mut m = Measurement::new("surp_dedup", ds.name, "decode");
     m.serialized_size = Some(encoded.len());
 
     for _ in 0..WARMUP {

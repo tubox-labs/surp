@@ -1,0 +1,23 @@
+[package]
+name = "surp-simd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
+description = "Optional SIMD-accelerated routines for Surp encoding/decoding"
+documentation = "https://docs.rs/surp-simd"
+keywords = ["simd", "performance", "encoding", "varint", "surp"]
+categories = ["encoding", "data-structures"]
+rust-version.workspace = true
+
+[features]
+default = []
+# SIMD-accelerated varint decode using pre-scan of continuation bits
+# Idea: https://github.com/as-com/varint-simd
+simd-varint = []
+
+[dependencies]
+surp-core = { workspace = true }

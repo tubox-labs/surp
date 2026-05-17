@@ -52,11 +52,11 @@ We encode element counts at the start of objects/arrays (for fast skipping) AND 
 
 **Risk**: Complex schema changes (renaming fields, changing types) may lead to subtle data loss.
 
-**Mitigation**: Field IDs are stable. Unknown fields are skipped, not rejected. Type changes require explicit migration. The `CrousSchema` derive provides `schema_info()` for programmatic validation.
+**Mitigation**: Field IDs are stable. Unknown fields are skipped, not rejected. Type changes require explicit migration. The `SurpSchema` derive provides `schema_info()` for programmatic validation.
 
 ### Zero-Copy Safety
 
-**Risk**: `CrousValue<'a>` borrows from the input buffer. If the buffer is deallocated while `CrousValue` references exist, UB would occur.
+**Risk**: `SurpValue<'a>` borrows from the input buffer. If the buffer is deallocated while `SurpValue` references exist, UB would occur.
 
 **Mitigation**: Lifetime parameter `'a` prevents use-after-free at compile time. This is standard Rust borrow semantics — no `unsafe` involved.
 
@@ -64,7 +64,7 @@ We encode element counts at the start of objects/arrays (for fast skipping) AND 
 
 **Risk**: SIMD code may not compile or may perform poorly on non-x86 architectures.
 
-**Mitigation**: SIMD is behind the `crous-simd` feature flag and is entirely optional. All operations have scalar fallbacks.
+**Mitigation**: SIMD is behind the `surp-simd` feature flag and is entirely optional. All operations have scalar fallbacks.
 
 ### Endianness
 
@@ -84,14 +84,14 @@ We encode element counts at the start of objects/arrays (for fast skipping) AND 
 
 **Risk**: Decoding into owned `Value` types allocates many small strings/vectors.
 
-**Mitigation**: Zero-copy `CrousValue<'a>` avoids allocation for string-heavy reads. Schema-bound decode (via `#[derive(Crous)]`) can decode directly into user structs.
+**Mitigation**: Zero-copy `SurpValue<'a>` avoids allocation for string-heavy reads. Schema-bound decode (via `#[derive(Surp)]`) can decode directly into user structs.
 
 ## Prioritized Optimization Roadmap
 
 1. **String dictionary** — implement per-block string table for repeated key dedup.
 2. **SIMD varint** — batch decode using PEXT/PDEP on x86_64.
 3. **Arena allocation** — pool allocations for `Value` trees.
-4. **Mmap decoder** — memory-mapped file support in `crous-io`.
+4. **Mmap decoder** — memory-mapped file support in `surp-io`.
 5. **Columnar mode** — optional columnar block layout for analytics workloads.
 
 ## Hot Functions to Profile

@@ -1,4 +1,4 @@
-//! Fuzz target for Crous decode functions.
+//! Fuzz target for Surp decode functions.
 //!
 //! Run with: cargo +nightly fuzz run fuzz_decode
 //!
@@ -13,11 +13,11 @@ use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
     // Attempt to decode arbitrary bytes — must not panic.
-    let mut decoder = crous_core::Decoder::new(data);
+    let mut decoder = surp_core::Decoder::new(data);
     let _ = decoder.decode_all_owned();
 
     // Also try text parsing — must not panic.
     if let Ok(text) = std::str::from_utf8(data) {
-        let _ = crous_core::text::parse(text);
+        let _ = surp_core::text::parse(text);
     }
 });

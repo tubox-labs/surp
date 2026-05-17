@@ -32,12 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **JSON-like API**: Complete redesign of Python bindings with `dumps()`/`loads()`/`dump()`/`load()` functions matching the `json` module conventions. Supports options: `compression`, `dedup`, `sort_keys`, `strict`, `max_depth`.
 - **Exception hierarchy**: Added custom exception types for better error handling:
-  - `CrousError`: Base exception class
-  - `CrousEncodeError`: Encoding failures
-  - `CrousDecodeError`: Decoding failures (malformed data)
-  - `CrousChecksumError`: Checksum verification failures
-  - `CrousTypeError`: Type conversion errors
-- **IDE support**: Updated `_crous_native.pyi` type stubs with complete signatures for all functions, classes, and exceptions.
+  - `SurpError`: Base exception class
+  - `SurpEncodeError`: Encoding failures
+  - `SurpDecodeError`: Decoding failures (malformed data)
+  - `SurpChecksumError`: Checksum verification failures
+  - `SurpTypeError`: Type conversion errors
+- **IDE support**: Updated `_surp_native.pyi` type stubs with complete signatures for all functions, classes, and exceptions.
 
 ### Added
 
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Clippy warning: `len() > 0` → `!is_empty()` in decompression check
-- Clippy `unsafe-op-in-unsafe-fn`: Added explicit unsafe block in `crous-simd` NEON intrinsics
+- Clippy `unsafe-op-in-unsafe-fn`: Added explicit unsafe block in `surp-simd` NEON intrinsics
 - Test reliability: Fixed `decompression_ratio_limit_enforcement` to use moderate compression ratio data for default limits test
 
 ### Breaking Changes
@@ -63,16 +63,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.2] - 2026-03-10
 
 ### Added
-- Initial implementation of `crous-core` with encoder/decoder
+- Initial implementation of `surp-core` with encoder/decoder
 - LEB128 varint and ZigZag signed integer encoding
 - Block framing with per-block XXH64 checksums
-- File header with magic "CROUSv1"
-- `Value` (owned) and `CrousValue<'a>` (zero-copy) types
+- `Value` (owned) and `SurpValue<'a>` (zero-copy) types
 - Human-readable text parser and pretty-printer
-- `#[derive(Crous)]` and `#[derive(CrousSchema)]` proc-macros
+- `#[derive(Surp)]` and `#[derive(SurpSchema)]` proc-macros
 - CLI tool: inspect, pretty, to-json, from-json, encode, bench
 - Compression plugin trait with no-op, zstd, snappy adapters
-- C FFI bindings with `crous_encode_buffer`, `crous_decode_buffer`, `crous_free`
+- C FFI bindings with `surp_encode_buffer`, `surp_decode_buffer`, `surp_free`
 - Async Tokio adapters (FramedWriter, FramedReader)
 - Property-based tests (proptest)
 - Criterion benchmarks
@@ -89,9 +88,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Prefix-delta compression**: dictionary entries sorted lexicographically; each entry stores `original_index | prefix_len | suffix_len | suffix` for compact storage of structured/hierarchical key names
 - **Owned decode path** (`decode_next_owned()` / `decode_all_owned()`): transparent decompression + dedup resolution for compressed blocks; zero-copy path rejects compressed blocks with a descriptive error
 - **Compression wired into encoder/decoder pipeline**: `flush_block()` compresses payload when configured; `read_next_block()` decompresses transparently; checksum on uncompressed data; fallback to None when compression doesn't help
-- **NEON SIMD byte scanning** (`crous-simd`): vectorized `find_byte()`, `count_byte()`, `find_non_ascii()` using aarch64 NEON intrinsics with scalar fallbacks
-- **Pure Python implementation** (`python/crous/`): full encode/decode with 8 modules, XXH64 hasher, text parser/printer, 54 tests
-- **PyO3 native extension** (`crous-python`): native Python bindings via PyO3 0.28, `encode()`/`decode()` functions + `Encoder`/`CrousDecoder` classes, dedup and compression support, 24 tests
+- **NEON SIMD byte scanning** (`surp-simd`): vectorized `find_byte()`, `count_byte()`, `find_non_ascii()` using aarch64 NEON intrinsics with scalar fallbacks
+- **Pure Python implementation** (`python/surp/`): full encode/decode with 8 modules, XXH64 hasher, text parser/printer, 54 tests
+- **PyO3 native extension** (`surp-python`): native Python bindings via PyO3 0.28, `encode()`/`decode()` functions + `Encoder`/`SurpDecoder` classes, dedup and compression support, 24 tests
 - **Cross-language interop**: bidirectional Rust↔Python binary format verified (native + pure Python)
 - **Expanded benchmarks**: JSON head-to-head comparison, deep nesting, numeric arrays, size report
 - **3 new fuzz targets**: `fuzz_roundtrip` (structured Value), `fuzz_text` (text parser), `fuzz_varint` (varint codec)
@@ -100,13 +99,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Python XXH64: corrected `PRIME64_2` constant (`0xC2B2AE3D27D4EB4F`)
 - Python XXH64: corrected `PRIME64_4` constant (`0x85EBCA77C2B2AE63`)
-- `crous-compression`: conditional `#[cfg]` gate on `CrousError` import to eliminate unused-import warning
+- `surp-compression`: conditional `#[cfg]` gate on `SurpError` import to eliminate unused-import warning
 
 ## [1.1.0] - 2026-02-25
 
 ### Added
-- **Full primitive type support**: `Crous` trait implementations for all Rust integer types (`u8`, `u16`, `u32`, `u64`, `u128`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, `isize`), `f32`, `Box<str>`, `Box<T>`, `()`, tuples up to 6 elements
-- **`CrousBytes` newtype**: dedicated type for raw binary blob encoding (`Value::Bytes`), distinct from `Vec<u8>` which encodes as `Array`
+- **Full primitive type support**: `Surp` trait implementations for all Rust integer types (`u8`, `u16`, `u32`, `u64`, `u128`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, `isize`), `f32`, `Box<str>`, `Box<T>`, `()`, tuples up to 6 elements
+- **`SurpBytes` newtype**: dedicated type for raw binary blob encoding (`Value::Bytes`), distinct from `Vec<u8>` which encodes as `Array`
 - **Map support**: `HashMap<String, T>` and `BTreeMap<String, T>` → `Value::Object`
 - **Cross-type decode compatibility**: signed integer types accept `Value::UInt` when the value fits
 - 42 new tests for trait implementations (29 unit + 13 derive integration)
@@ -136,10 +135,10 @@ Initial release.
 - [ ] Run full test suite: `cargo test --workspace --all-features`
 - [ ] Run clippy: `cargo clippy --workspace --all-features -- -D warnings`
 - [ ] Run Python tests: `cd python && python3 -m pytest tests/ -v`
-- [ ] Run benchmarks: `cargo bench -p crous-core`
+- [ ] Run benchmarks: `cargo bench -p surp-core`
 - [ ] Run all fuzz targets (30s each)
 - [ ] Run `cargo audit`
 - [ ] Verify cross-language interop (Rust↔Python)
 - [ ] Review any new `unsafe` code
 - [ ] Tag release: `git tag v1.1.0`
-- [ ] Publish: `cargo publish -p crous-core && cargo publish -p crous-derive && ...`
+- [ ] Publish: `cargo publish -p surp-core && cargo publish -p surp-derive && ...`

@@ -10,9 +10,9 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    // Construct a minimal valid Crous file with a StringDict block
+    // Construct a minimal valid Surp file with a StringDict block
     // whose payload is the fuzz input, followed by a Data block.
-    let mut file = b"CROUSv1\x00".to_vec();
+    let mut file = Vec::new();
 
     // StringDict block: type(0x04) | len(varint) | comp(0x00) | checksum(8) | payload
     if data.len() > 65536 {
@@ -39,7 +39,7 @@ fuzz_target!(|data: &[u8]| {
     file.extend_from_slice(&data_payload);
 
     // Try decoding — must not panic
-    let mut dec = crous_core::Decoder::new(&file);
+    let mut dec = surp_core::Decoder::new(&file);
     let _ = dec.decode_all_owned();
 });
 

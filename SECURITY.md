@@ -2,7 +2,7 @@
 
 ## Threat Model
 
-Crous is designed to safely handle **untrusted input**. The decoder is built to resist adversarial documents including:
+Surp is designed to safely handle **untrusted input**. The decoder is built to resist adversarial documents including:
 
 ### Attack Vectors & Mitigations
 
@@ -22,7 +22,7 @@ Crous is designed to safely handle **untrusted input**. The decoder is built to 
 ### Resource Limits (Configurable)
 
 ```rust
-use crous_core::Limits;
+use surp_core::Limits;
 
 // For untrusted network input:
 let limits = Limits::strict();
@@ -35,8 +35,8 @@ let limits = Limits::strict();
 
 ### Safe Rust Policy
 
-- The core encoder/decoder (`crous-core`) uses **100% safe Rust**.
-- The FFI crate (`crous-ffi`) uses `unsafe` at the C boundary only, with documented safety contracts.
+- The core encoder/decoder (`surp-core`) uses **100% safe Rust**.
+- The FFI crate (`surp-ffi`) uses `unsafe` at the C boundary only, with documented safety contracts.
 - No `unsafe` in parsing, varint decoding, or checksum computation.
 
 ### Fuzzing
@@ -55,7 +55,7 @@ cargo +nightly fuzz run fuzz_decode -- -max_total_time=3600
 
 ### Reporting Vulnerabilities
 
-If you discover a security vulnerability, please report it privately via GitHub Security Advisories or email to [security@crous-format.org].
+If you discover a security vulnerability, please report it privately via GitHub Security Advisories or email to [security@surp-format.org].
 
 Do NOT open a public issue for security vulnerabilities.
 
