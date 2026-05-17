@@ -1,13 +1,13 @@
-# Crous
+# Surp
 
 **A compact, canonical binary serializer and human-readable alternative to JSON, written in Rust.**
 
-[![CI](https://github.com/crous-format/crous/actions/workflows/ci.yml/badge.svg)](https://github.com/crous-format/crous/actions)
+[![CI](https://github.com/surp-format/surp/actions/workflows/ci.yml/badge.svg)](https://github.com/surp-format/surp/actions)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 
 ## Overview
 
-Crous is a production-grade binary serialization format that provides:
+Surp is a production-grade binary serialization format that provides:
 
 - **Compact binary encoding** — 2×–5× smaller than equivalent JSON
 - **Human-readable text notation** — unique syntax with deterministic binary mapping
@@ -20,7 +20,7 @@ Crous is a production-grade binary serialization format that provides:
 ## Quick Start
 
 ```rust
-use crous_core::{Encoder, Decoder, Value};
+use surp_core::{Encoder, Decoder, Value};
 
 // Encode
 let value = Value::Object(vec![
@@ -41,7 +41,7 @@ assert_eq!(decoded.to_owned_value(), value);
 
 ## Human-Readable Syntax
 
-```crous
+```surp
 {
     name: "Alice";
     age: 30;
@@ -58,31 +58,31 @@ assert_eq!(decoded.to_owned_value(), value);
 
 | Crate | Description |
 |-------|-------------|
-| `crous-core` | Encoder/decoder, block framing, Value types |
-| `crous-derive` | `#[derive(Crous)]` proc-macro with stable field IDs |
-| `crous-io` | Async Tokio adapters, framed streams |
-| `crous-cli` | CLI: inspect, pretty-print, convert |
-| `crous-compression` | Pluggable zstd/snappy compression |
-| `crous-ffi` | C FFI bindings |
-| `crous-simd` | NEON/SSE2 SIMD acceleration (byte scanning) |
+| `surp-core` | Encoder/decoder, block framing, Value types |
+| `surp-derive` | `#[derive(Surp)]` proc-macro with stable field IDs |
+| `surp-io` | Async Tokio adapters, framed streams |
+| `surp-cli` | CLI: inspect, pretty-print, convert |
+| `surp-compression` | Pluggable zstd/snappy compression |
+| `surp-ffi` | C FFI bindings |
+| `surp-simd` | NEON/SSE2 SIMD acceleration (byte scanning) |
 
 ## Python Implementation
 
-A pure-Python implementation is included in `python/crous/`, providing
+A pure-Python implementation is included in `python/surp/`, providing
 full encode/decode compatibility with the Rust implementation:
 
 ```python
-import crous
+import surp
 
 # Encode
-data = crous.encode({"name": "Alice", "age": 30, "active": True})
+data = surp.encode({"name": "Alice", "age": 30, "active": True})
 
 # Decode
-obj = crous.decode(data)
+obj = surp.decode(data)
 print(obj)  # {'name': 'Alice', 'age': 30, 'active': True}
 
 # Human-readable text format
-text = crous.pretty_print(crous.Value.from_python(obj))
+text = surp.pretty_print(surp.Value.from_python(obj))
 print(text)
 ```
 
@@ -98,38 +98,38 @@ cd python && python -m pytest tests/ -v
 
 ```bash
 # Install
-cargo install --path crous-cli
+cargo install --path surp-cli
 
-# Convert JSON to Crous
-crous from-json data.json -o data.crous
+# Convert JSON to Surp
+surp from-json data.json -o data.surp
 
-# Pretty-print a Crous file
-crous pretty data.crous
+# Pretty-print a Surp file
+surp pretty data.surp
 
 # Inspect block layout
-crous inspect data.crous
+surp inspect data.surp
 
 # Convert back to JSON
-crous to-json data.crous
+surp to-json data.surp
 
 # Quick benchmark
-crous bench data.json -n 10000
+surp bench data.json -n 10000
 ```
 
 ## RFC-001 Preview (Next-Generation Path)
 
 The repository now includes an additive RFC-001 implementation in
-`crous_core::rfc001` (CTN + CBF + baseline CQL) without breaking v1 APIs.
+`surp_core::rfc001` (CTN + CBF + baseline CQL) without breaking v1 APIs.
 
 ```bash
 # Compile RFC-001 CTN -> CBF
-crous rfc-compile input.crous -o output.crb
+surp rfc-compile input.surp -o output.crb
 
 # Inspect RFC-001 CBF (and optionally print CTN)
-crous rfc-inspect output.crb --ctn
+surp rfc-inspect output.crb --ctn
 
 # Run baseline RFC-001 CQL path query
-crous rfc-query output.crb ".user.email"
+surp rfc-query output.crb ".user.email"
 ```
 
 Implementation details and current feature coverage:
@@ -138,13 +138,13 @@ Implementation details and current feature coverage:
 ## Derive Macro
 
 ```rust
-use crous_derive::{Crous, CrousSchema};
+use surp_derive::{Surp, SurpSchema};
 
-#[derive(Debug, PartialEq, Crous, CrousSchema)]
+#[derive(Debug, PartialEq, Surp, SurpSchema)]
 struct Person {
-    #[crous(id = 1)] name: String,
-    #[crous(id = 2)] age: u8,
-    #[crous(id = 3)] tags: Vec<String>,
+    #[surp(id = 1)] name: String,
+    #[surp(id = 2)] age: u8,
+    #[surp(id = 3)] tags: Vec<String>,
 }
 
 let alice = Person {
@@ -154,7 +154,7 @@ let alice = Person {
 };
 
 // Encode
-let value = alice.to_crous_value();
+let value = alice.to_surp_value();
 let mut encoder = Encoder::new();
 encoder.encode_value(&value).unwrap();
 let bytes = encoder.finish().unwrap();
@@ -163,8 +163,7 @@ let bytes = encoder.finish().unwrap();
 ## Binary Format Summary
 
 ```
-File:    [Header 8B] [Block]* [Trailer Block]
-Header:  "CROUSv1" (7B) | flags (1B)
+File:    [Block]* [Trailer Block]
 Block:   type(1B) | length(varint) | compression(1B) | checksum(8B) | payload
 ```
 
@@ -176,7 +175,7 @@ Wire types: Null, Bool, VarUInt (LEB128), VarInt (ZigZag+LEB128), Fixed64, LenDe
 cargo build --workspace
 cargo test --workspace --all-features
 cargo clippy --workspace --all-features
-cargo bench -p crous-core
+cargo bench -p surp-core
 ```
 
 ## Fuzzing
@@ -190,16 +189,16 @@ cargo +nightly fuzz run fuzz_varint     # varint codec
 
 ## Performance
 
-Crous vs JSON (serde_json) on Apple Silicon (M-series):
+Surp vs JSON (serde_json) on Apple Silicon (M-series):
 
-| Payload | Crous size | JSON size | Ratio | Decode speed |
+| Payload | Surp size | JSON size | Ratio | Decode speed |
 |---------|-----------|-----------|-------|--------------|
 | Small object | 118 B | 90 B | 1.31× | **4× faster** |
 | 100 users nested | 9.8 KB | 10.3 KB | 0.95× | ~2× faster |
 | 10K integers | 29.9 KB | 52.8 KB | **0.57×** | ~3× faster |
 | 64 KB binary | 65.6 KB | 87.4 KB | **0.75×** | ~10× faster |
 
-Crous decode throughput: **1.2 GiB/s** for small objects.
+Surp decode throughput: **1.2 GiB/s** for small objects.
 
 ## License
 

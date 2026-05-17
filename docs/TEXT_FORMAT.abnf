@@ -1,10 +1,10 @@
 ; ===========================================================================
-; Crous Text Format — ABNF Grammar (RFC 5234)
+; Surp Text Format — ABNF Grammar (RFC 5234)
 ;
-; This is the normative grammar for the Crous human-readable textual
-; notation. It maps 1:1 to the Crous binary wire format.
+; This is the normative grammar for the Surp human-readable textual
+; notation. It maps 1:1 to the Surp binary wire format.
 ;
-; Reference implementation: crous-core/src/text.rs
+; Reference implementation: surp-core/src/text.rs
 ; Specification: docs/SPEC.md
 ; ===========================================================================
 

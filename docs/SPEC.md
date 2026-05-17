@@ -1,8 +1,8 @@
-# Crous Binary Format Specification v1.0
+# Surp Binary Format Specification v1.0
 
 ## 1. Overview
 
-Crous is a compact, canonical binary serialization format designed as an alternative to JSON.
+Surp is a compact, canonical binary serialization format designed as an alternative to JSON.
 It provides deterministic encoding, schema evolution support, and both human-readable and
 binary representations.
 
@@ -17,8 +17,6 @@ binary representations.
 
 ```
 ┌──────────────────────────────────────────┐
-│ File Header (8 bytes)                    │
-├──────────────────────────────────────────┤
 │ Block 0 (Data)                           │
 │   block_type(1) | len(varint) |          │
 │   comp(1) | checksum(8) | payload(...)   │
@@ -33,20 +31,7 @@ binary representations.
 └──────────────────────────────────────────┘
 ```
 
-### 2.1 File Header (8 bytes)
-
-| Offset | Size | Field    | Value                    |
-|--------|------|----------|--------------------------|
-| 0      | 7    | Magic    | ASCII `"CROUSv1"`        |
-| 7      | 1    | Flags    | Bit field (see below)    |
-
-**Flags byte:**
-- Bit 0: Reserved (0)
-- Bit 1: Has index block
-- Bit 2: Has schema block
-- Bits 3-7: Reserved (0)
-
-### 2.2 Block Header
+### 2.1 Block Header
 
 | Field       | Size    | Description                              |
 |-------------|---------|------------------------------------------|
@@ -56,7 +41,7 @@ binary representations.
 | checksum    | 8 bytes | XXH64 of uncompressed payload (LE)       |
 | payload     | N bytes | Block data (N = block_len)               |
 
-### 2.3 Block Types
+### 2.2 Block Types
 
 | ID   | Name       | Description                              |
 |------|------------|------------------------------------------|
@@ -78,7 +63,7 @@ binary representations.
 > **Adaptive compression** (feature `lz4`/`zstd`/`snappy`): the encoder
 > can sample the first N bytes of a block and select the algorithm that
 > achieves the best ratio above a configurable threshold. See
-> `AdaptiveSelector` in crous-compression.
+> `AdaptiveSelector` in surp-compression.
 
 ### 2.5 Compressed Block Wire Format
 
@@ -94,7 +79,7 @@ uncompressed_len(varint) | compressed_data
 
 ### 2.6 Decode Paths
 
-- **Zero-copy** (`decode_next()` → `CrousValue<'a>`): Borrows from the input slice. Rejects compressed blocks with a descriptive error.
+- **Zero-copy** (`decode_next()` → `SurpValue<'a>`): Borrows from the input slice. Rejects compressed blocks with a descriptive error.
 - **Owned** (`decode_next_owned()` → `Value`): Works transparently with both compressed and uncompressed blocks. Decompresses into an internal buffer when needed.
 
 ## 3. Wire Types
@@ -186,7 +171,7 @@ zero-extended to 8 bytes for backward compatibility.
 
 ### 5.2 File Trailer
 
-The trailer block contains an XXH64 hash of all preceding bytes (header + all blocks). This detects file-level truncation or corruption.
+The trailer block contains an XXH64 hash of all preceding bytes. This detects file-level truncation or corruption.
 
 ## 6. Endianness
 
@@ -198,14 +183,14 @@ All multi-byte fixed-width integers (f64, checksums) are stored in little-endian
 
 ### 7.1 Field IDs
 
-When using `#[derive(Crous)]`, each field gets a stable integer ID via `#[crous(id = N)]`. Fields are matched by name in schema-less mode and by ID in schema-on-write mode.
+When using `#[derive(Surp)]`, each field gets a stable integer ID via `#[surp(id = N)]`. Fields are matched by name in schema-less mode and by ID in schema-on-write mode.
 
 ### 7.2 Compatible Changes (minor version)
 - Adding new optional fields (with new IDs)
 - Adding new wire types with defined skip semantics
 
 ### 7.3 Incompatible Changes (major version)
-- Changing the file header magic
+- Changing block framing
 - Changing existing wire type semantics
 - Removing the ability to skip unknown fields
 
@@ -317,7 +302,7 @@ Key points:
 All optimizations are gated behind Cargo feature flags to keep the default
 binary small and compilation fast.
 
-### 12.1 crous-core features
+### 12.1 surp-core features
 
 | Flag          | Dependencies  | Description |
 |---------------|---------------|-------------|
@@ -325,13 +310,13 @@ binary small and compilation fast.
 | `compat-crc32`| `crc32fast`   | CRC32 checksum support for legacy interop |
 | `fast-alloc`  | `bumpalo`     | Per-block bump allocator via `BumpDecoder` |
 
-### 12.2 crous-io features
+### 12.2 surp-io features
 
 | Flag   | Dependencies | Description |
 |--------|-------------|-------------|
 | `mmap` | `memmap2`   | Memory-mapped zero-copy file reader (`MmapReader`) |
 
-### 12.3 crous-compression features
+### 12.3 surp-compression features
 
 | Flag     | Dependencies | Description |
 |----------|-------------|-------------|
@@ -339,7 +324,7 @@ binary small and compilation fast.
 | `zstd`   | `zstd`      | Zstandard compression |
 | `snappy` | `snap`      | Snappy compression |
 
-### 12.4 crous-simd features
+### 12.4 surp-simd features
 
 | Flag         | Dependencies | Description |
 |--------------|-------------|-------------|
@@ -347,7 +332,7 @@ binary small and compilation fast.
 
 ## 13. Text Format
 
-The Crous text format is a deterministic, human-readable notation that maps
+The Surp text format is a deterministic, human-readable notation that maps
 1:1 to the binary format. See `docs/TEXT_FORMAT.abnf` for the normative ABNF
 grammar (RFC 5234).
 
@@ -360,7 +345,7 @@ Key differences from JSON:
 
 ## 14. CLI Reference
 
-The `crous` CLI tool (crous-cli) provides the following commands:
+The `surp` CLI tool (surp-cli) provides the following commands:
 
 | Command    | Description |
 |------------|-------------|
@@ -370,5 +355,5 @@ The `crous` CLI tool (crous-cli) provides the following commands:
 | `from-json`| Convert JSON to binary |
 | `encode`   | Parse text notation, emit binary |
 | `decode`   | Decode binary to text notation |
-| `validate` | Verify header, checksums, and decode integrity |
+| `validate` | Verify checksums and decode integrity |
 | `bench`    | Quick encode/decode performance test |

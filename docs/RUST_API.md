@@ -1,4 +1,4 @@
-# Crous — Rust API Documentation
+# Surp — Rust API Documentation
 
 > A compact, canonical binary serializer and human-readable alternative to JSON.
 
@@ -31,7 +31,7 @@
 
 ## Overview
 
-Crous is a binary serialization format designed for:
+Surp is a binary serialization format designed for:
 
 - **Compact output** — varint integers, no redundant delimiters, binary-native blobs
 - **Canonical encoding** — deterministic byte output for the same logical data
@@ -44,13 +44,13 @@ Crous is a binary serialization format designed for:
 
 | Crate | Purpose |
 |-------|---------|
-| `crous-core` | Encoder, Decoder, Value types, wire format, text parser |
-| `crous-derive` | `#[derive(Crous)]` and `#[derive(CrousSchema)]` proc macros |
-| `crous-compression` | Pluggable compression (zstd, lz4, snappy) |
-| `crous-io` | Async IO (Tokio framed streams), mmap, Bytes API |
-| `crous-simd` | SIMD-accelerated varint decode, byte scanning (NEON/SSE2) |
-| `crous-ffi` | C-compatible FFI (`crous_encode_buffer`, `crous_decode_buffer`) |
-| `crous-python` | PyO3 native Python extension |
+| `surp-core` | Encoder, Decoder, Value types, wire format, text parser |
+| `surp-derive` | `#[derive(Surp)]` and `#[derive(SurpSchema)]` proc macros |
+| `surp-compression` | Pluggable compression (zstd, lz4, snappy) |
+| `surp-io` | Async IO (Tokio framed streams), mmap, Bytes API |
+| `surp-simd` | SIMD-accelerated varint decode, byte scanning (NEON/SSE2) |
+| `surp-ffi` | C-compatible FFI (`surp_encode_buffer`, `surp_decode_buffer`) |
+| `surp-python` | PyO3 native Python extension |
 
 ## Quick Start
 
@@ -58,13 +58,13 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-crous-core = "1.1"
+surp-core = "1.1"
 ```
 
 ### Encode & Decode
 
 ```rust
-use crous_core::{Encoder, Decoder, Value};
+use surp_core::{Encoder, Decoder, Value};
 
 // Encode
 let mut encoder = Encoder::new();
@@ -76,14 +76,14 @@ let bytes = encoder.finish().unwrap();
 
 // Decode (zero-copy)
 let mut decoder = Decoder::new(&bytes);
-let value = decoder.decode_next().unwrap();  // CrousValue<'_>
+let value = decoder.decode_next().unwrap();  // SurpValue<'_>
 let owned = value.to_owned_value();          // Value (heap)
 ```
 
 ### With String Dedup
 
 ```rust
-use crous_core::{Encoder, Decoder, Value};
+use surp_core::{Encoder, Decoder, Value};
 
 let mut enc = Encoder::new();
 enc.enable_dedup();
@@ -97,8 +97,8 @@ let bytes = enc.finish().unwrap();
 ### With Compression (feature = `lz4`)
 
 ```rust
-use crous_core::{Encoder, Decoder, Value};
-use crous_core::wire::CompressionType;
+use surp_core::{Encoder, Decoder, Value};
+use surp_core::wire::CompressionType;
 
 let mut enc = Encoder::new();
 enc.set_compression(CompressionType::Lz4);
@@ -134,10 +134,10 @@ Helper methods: `type_name()`, `is_null()`, `as_str()`, `as_uint()`, `as_int()`,
 
 Implements `Display` for human-readable output and bidirectional conversion with `serde_json::Value` via `From`.
 
-### `CrousValue<'a>` (zero-copy)
+### `SurpValue<'a>` (zero-copy)
 
 ```rust
-pub enum CrousValue<'a> {
+pub enum SurpValue<'a> {
     Null,
     Bool(bool),
     UInt(u64),
@@ -145,8 +145,8 @@ pub enum CrousValue<'a> {
     Float(f64),
     Str(&'a str),       // borrows from input
     Bytes(&'a [u8]),    // borrows from input
-    Array(Vec<CrousValue<'a>>),
-    Object(Vec<(&'a str, CrousValue<'a>)>),
+    Array(Vec<SurpValue<'a>>),
+    Object(Vec<(&'a str, SurpValue<'a>)>),
 }
 ```
 
@@ -173,7 +173,6 @@ pub struct Encoder { /* ... */ }
 |--------|-------------|
 | `enable_dedup()` | Enable string deduplication (StringDict + Reference) |
 | `set_compression(CompressionType)` | Set block compression (`None`, `Lz4`, `Zstd`, `Snappy`) |
-| `set_flags(u8)` | Set file header flags |
 
 ### Encoding
 
@@ -184,7 +183,6 @@ pub struct Encoder { /* ... */ }
 
 ### Behavior
 
-- The encoder automatically writes the `CROUSv1` file header on first use.
 - `finish()` emits a StringDict block (if dedup enabled and strings were recorded), then a Data block with optional compression, then a Trailer block with a whole-file XXH64 checksum.
 - Compression uses a ratio threshold: if the compressed payload is not smaller than the original, it falls back to uncompressed.
 - Nesting depth is enforced against `Limits::max_nesting_depth`.
@@ -208,9 +206,9 @@ pub struct Decoder<'a> { /* ... */ }
 
 | Method | Description |
 |--------|-------------|
-| `decode_next() → Result<CrousValue<'a>>` | Decode next value (zero-copy). Fails on compressed blocks. |
+| `decode_next() → Result<SurpValue<'a>>` | Decode next value (zero-copy). Fails on compressed blocks. |
 | `decode_next_owned() → Result<Value>` | Decode next value (owned). Works with compressed blocks. |
-| `decode_all() → Result<Vec<CrousValue<'a>>>` | Decode all remaining values (zero-copy). |
+| `decode_all() → Result<Vec<SurpValue<'a>>>` | Decode all remaining values (zero-copy). |
 | `decode_all_owned() → Result<Vec<Value>>` | Decode all remaining values (owned). |
 
 ### Inspection
@@ -222,7 +220,6 @@ pub struct Decoder<'a> { /* ... */ }
 
 ### Behavior
 
-- The decoder validates the `CROUSv1` magic header on first block read.
 - Each block's XXH64 checksum is verified before decoding.
 - StringDict blocks are consumed transparently — they populate the string dictionary, then the decoder loops to read the next Data block.
 - Compressed blocks are decompressed into an internal buffer for the owned decode path; zero-copy decode rejects them with an error.
@@ -241,7 +238,7 @@ Wraps `Decoder` with a `bumpalo::Bump` arena for scratch memory. Call `reset_are
 
 ## Text Format
 
-The Crous text notation provides a 1:1 mapping to the binary format:
+The Surp text notation provides a 1:1 mapping to the binary format:
 
 ```text
 {
@@ -256,8 +253,8 @@ The Crous text notation provides a 1:1 mapping to the binary format:
 ### API
 
 ```rust
-use crous_core::text::{parse, pretty_print};
-use crous_core::Value;
+use surp_core::text::{parse, pretty_print};
+use surp_core::Value;
 
 let value = parse(r#"{ name: "Alice"; age: 30; }"#).unwrap();
 let text = pretty_print(&value, 4);  // indent=4
@@ -279,32 +276,32 @@ let text = pretty_print(&value, 4);  // indent=4
 ## Derive Macros
 
 ```rust
-use crous_derive::{Crous, CrousSchema};
-use crous_core::CrousBytes;
+use surp_derive::{Surp, SurpSchema};
+use surp_core::SurpBytes;
 
-#[derive(Debug, PartialEq, Crous, CrousSchema)]
+#[derive(Debug, PartialEq, Surp, SurpSchema)]
 struct Person {
-    #[crous(id = 1)] name: String,
-    #[crous(id = 2)] age: u8,
-    #[crous(id = 3)] tags: Vec<String>,
-    #[crous(id = 4)] avatar: CrousBytes,
+    #[surp(id = 1)] name: String,
+    #[surp(id = 2)] age: u8,
+    #[surp(id = 3)] tags: Vec<String>,
+    #[surp(id = 4)] avatar: SurpBytes,
 }
 ```
 
-### `#[derive(Crous)]`
+### `#[derive(Surp)]`
 
 Generates:
-- `to_crous_value(&self) → Value` — serializes fields as an Object
-- `from_crous_value(&Value) → Result<Self>` — deserializes from Object, skipping unknown fields
+- `to_surp_value(&self) → Value` — serializes fields as an Object
+- `from_surp_value(&Value) → Result<Self>` — deserializes from Object, skipping unknown fields
 - `schema_fingerprint() → u64` — XXH64 of `TypeName:field1=id1,field2=id2,...`
 - `type_name() → &'static str`
 
 Convenience methods from the trait:
-- `to_crous_bytes() → Result<Vec<u8>>` — encode to binary
-- `from_crous_bytes(data) → Result<Self>` — decode from binary
-- `from_crous_bytes_with_limits(data, limits) → Result<Self>` — decode with limits
+- `to_surp_bytes() → Result<Vec<u8>>` — encode to binary
+- `from_surp_bytes(data) → Result<Self>` — decode from binary
+- `from_surp_bytes_with_limits(data, limits) → Result<Self>` — decode with limits
 
-### `#[derive(CrousSchema)]`
+### `#[derive(SurpSchema)]`
 
 Generates:
 - `schema_info() → &'static [(&str, u64)]` — field name/ID pairs
@@ -312,9 +309,9 @@ Generates:
 
 ### Blanket Implementations
 
-The `Crous` trait has built-in implementations for all common Rust types:
+The `Surp` trait has built-in implementations for all common Rust types:
 
-| Rust type | Crous `Value` | Notes |
+| Rust type | Surp `Value` | Notes |
 |-----------|---------------|-------|
 | `bool` | `Bool` | |
 | `u8`, `u16`, `u32`, `u64`, `usize` | `UInt` | widened to `u64`, range-checked on decode |
@@ -323,17 +320,17 @@ The `Crous` trait has built-in implementations for all common Rust types:
 | `i128` | `Int` | panics on encode if outside `i64` range |
 | `f32`, `f64` | `Float` | `f32` widened to `f64` |
 | `String`, `Box<str>` | `Str` | |
-| `CrousBytes` | `Bytes` | newtype for raw binary blobs |
-| `Vec<u8>` | `Array` of `UInt` | use `CrousBytes` for `Value::Bytes` |
-| `Vec<T: Crous>` | `Array` | |
-| `Option<T: Crous>` | `T` or `Null` | |
-| `Box<T: Crous>` | delegates to `T` | transparent wrapper |
+| `SurpBytes` | `Bytes` | newtype for raw binary blobs |
+| `Vec<u8>` | `Array` of `UInt` | use `SurpBytes` for `Value::Bytes` |
+| `Vec<T: Surp>` | `Array` | |
+| `Option<T: Surp>` | `T` or `Null` | |
+| `Box<T: Surp>` | delegates to `T` | transparent wrapper |
 | `HashMap<String, T>` | `Object` | insertion-order not guaranteed |
 | `BTreeMap<String, T>` | `Object` | sorted by key |
 | `(A,)` … `(A,B,C,D,E,F)` | `Array` | heterogeneous tuples up to 6 elements |
 | `()` | `Null` | unit type |
 
-> **`Vec<u8>` vs `CrousBytes`**: `Vec<u8>` encodes as an `Array` of `UInt` values via the generic `Vec<T>` impl. Use `CrousBytes(Vec<u8>)` when you want the compact `Value::Bytes` wire encoding for raw binary data.
+> **`Vec<u8>` vs `SurpBytes`**: `Vec<u8>` encodes as an `Array` of `UInt` values via the generic `Vec<T>` impl. Use `SurpBytes(Vec<u8>)` when you want the compact `Value::Bytes` wire encoding for raw binary data.
 
 Signed integer types (`i8`–`i64`, `isize`) also accept `Value::UInt` on decode when the value fits, providing cross-compatibility with unsigned encoders.
 
@@ -341,7 +338,7 @@ Signed integer types (`i8`–`i64`, `isize`) also accept `Value::UInt` on decode
 
 ## Compression
 
-**Crate:** `crous-compression`
+**Crate:** `surp-compression`
 
 ### Trait
 
@@ -366,7 +363,7 @@ pub trait Compressor: Send + Sync {
 ### Adaptive Selection
 
 ```rust
-use crous_compression::{AdaptiveSelector, CompressorRegistry};
+use surp_compression::{AdaptiveSelector, CompressorRegistry};
 
 let reg = CompressorRegistry::with_defaults();
 let selector = AdaptiveSelector::default(); // ratio_threshold: 0.9, sample: 64KB
@@ -385,12 +382,12 @@ let comp = reg.find(CompressionType::Lz4);
 
 ## IO & Streaming
 
-**Crate:** `crous-io`
+**Crate:** `surp-io`
 
 ### Convenience Functions
 
 ```rust
-use crous_io::{read_file_bytes, write_values_to_bytes};
+use surp_io::{read_file_bytes, write_values_to_bytes};
 
 let values = read_file_bytes(&data)?;
 let bytes = write_values_to_bytes(&values)?;
@@ -399,7 +396,7 @@ let bytes = write_values_to_bytes(&values)?;
 ### Shared Buffers (bytes::Bytes)
 
 ```rust
-use crous_io::{read_from_shared, write_to_shared};
+use surp_io::{read_from_shared, write_to_shared};
 
 let shared = write_to_shared(&values)?;  // bytes::Bytes
 let values = read_from_shared(shared)?;
@@ -408,7 +405,7 @@ let values = read_from_shared(shared)?;
 ### Async Framed IO (Tokio)
 
 ```rust
-use crous_io::FramedWriter;
+use surp_io::FramedWriter;
 
 let mut writer = FramedWriter::new(tcp_stream);
 writer.write_data(payload).await?;
@@ -416,10 +413,9 @@ writer.flush().await?;
 ```
 
 ```rust
-use crous_io::FramedReader;
+use surp_io::FramedReader;
 
 let mut reader = FramedReader::new(tcp_stream);
-let _header = reader.read_header().await?;
 while let Some(block) = reader.read_next_block_raw().await? {
     // process block bytes
 }
@@ -428,18 +424,18 @@ while let Some(block) = reader.read_next_block_raw().await? {
 ### Memory-Mapped Files (feature = `mmap`)
 
 ```rust
-use crous_io::MmapReader;
+use surp_io::MmapReader;
 
-let reader = MmapReader::open("data.crous")?;
+let reader = MmapReader::open("data.surp")?;
 let values = reader.decode_all()?;           // owned
-let borrowed = reader.decode_all_borrowed()?; // zero-copy CrousValue<'_>
+let borrowed = reader.decode_all_borrowed()?; // zero-copy SurpValue<'_>
 ```
 
 ---
 
 ## SIMD Acceleration
 
-**Crate:** `crous-simd`
+**Crate:** `surp-simd`
 
 Provides optimized byte-level operations with automatic platform fallbacks.
 
@@ -457,37 +453,37 @@ All functions fall back to scalar implementations on unsupported architectures.
 
 ## FFI (C Bindings)
 
-**Crate:** `crous-ffi`
+**Crate:** `surp-ffi`
 
 ```c
-// Encode JSON → Crous binary
-int crous_encode_buffer(
+// Encode JSON → Surp binary
+int surp_encode_buffer(
     const uint8_t *in_ptr, size_t in_len,
     uint8_t **out_ptr, size_t *out_len
 );
 
-// Decode Crous binary → JSON string
-int crous_decode_buffer(
+// Decode Surp binary → JSON string
+int surp_decode_buffer(
     const uint8_t *in_ptr, size_t in_len,
     uint8_t **json_out, size_t *json_len
 );
 
 // Free library-allocated memory
-void crous_free(uint8_t *ptr, size_t len);
+void surp_free(uint8_t *ptr, size_t len);
 ```
 
-Returns `0` on success, `-1` on error. Caller must free output with `crous_free`.
+Returns `0` on success, `-1` on error. Caller must free output with `surp_free`.
 
 ---
 
 ## Python Bindings
 
-**Crate:** `crous-python` (PyO3 0.28)
+**Crate:** `surp-python` (PyO3 0.28)
 
-Build with `maturin develop` inside the `crous-python/` directory.
+Build with `maturin develop` inside the `surp-python/` directory.
 
 ```python
-import _crous_native as cn
+import _surp_native as cn
 
 # Module-level functions
 data = cn.encode({"name": "Alice", "age": 30})
@@ -501,7 +497,7 @@ enc.encode({"key": "value"})
 data = enc.finish()
 
 # Decoder class
-dec = cn.CrousDecoder(data)
+dec = cn.SurpDecoder(data)
 values = dec.decode_all()  # returns list
 ```
 
@@ -510,7 +506,7 @@ values = dec.decode_all()  # returns list
 ## Resource Limits
 
 ```rust
-use crous_core::Limits;
+use surp_core::Limits;
 ```
 
 | Field | Default | Strict | Unlimited |
@@ -535,8 +531,6 @@ let limits = Limits { max_nesting_depth: 64, ..Limits::default() };
 
 ```
 ┌─────────────┐
-│ Header (8B) │  "CROUSv1" + flags
-├─────────────┤
 │ Block 0     │  [StringDict block, if dedup]
 ├─────────────┤
 │ Block 1     │  Data block (values)
@@ -580,7 +574,7 @@ block_type (1B) | payload_len (varint) | compression (1B) | checksum (8B, XXH64)
 
 ## Feature Flags
 
-### `crous-core`
+### `surp-core`
 
 | Flag | Effect |
 |------|--------|
@@ -591,13 +585,13 @@ block_type (1B) | payload_len (varint) | compression (1B) | checksum (8B, XXH64)
 | `lz4` | LZ4 block compression (pure Rust via lz4_flex) |
 | `snappy` | Snappy block compression |
 
-### `crous-io`
+### `surp-io`
 
 | Flag | Effect |
 |------|--------|
 | `mmap` | `MmapReader` for zero-copy file access |
 
-### `crous-simd`
+### `surp-simd`
 
 | Flag | Effect |
 |------|--------|
@@ -611,7 +605,7 @@ Measured on **Apple M4** (10 cores), Rust 1.92.0, `--release`, 10 iterations per
 
 ### Decode Throughput (MB/s, higher = better)
 
-| Dataset | Crous | JSON | MsgPack | CBOR |
+| Dataset | Surp | JSON | MsgPack | CBOR |
 |---------|-------|------|---------|------|
 | small_objects | 816 | 280 | 240 | 122 |
 | string_heavy | 909 | 348 | 331 | 205 |
@@ -622,7 +616,7 @@ Measured on **Apple M4** (10 cores), Rust 1.92.0, `--release`, 10 iterations per
 
 ### Encode Throughput (MB/s)
 
-| Dataset | Crous | JSON | MsgPack | CBOR |
+| Dataset | Surp | JSON | MsgPack | CBOR |
 |---------|-------|------|---------|------|
 | small_objects | 983 | 1,072 | 1,100 | 894 |
 | string_heavy | 1,602 | 1,669 | 1,761 | 1,518 |
@@ -633,7 +627,7 @@ Measured on **Apple M4** (10 cores), Rust 1.92.0, `--release`, 10 iterations per
 
 ### Serialized Size
 
-| Dataset | Crous | Crous+Dedup | JSON | MsgPack | CBOR | Crous/JSON |
+| Dataset | Surp | Surp+Dedup | JSON | MsgPack | CBOR | Surp/JSON |
 |---------|-------|-------------|------|---------|------|------------|
 | small_objects | 8.6 MB | 12.0 MB | 10.5 MB | 7.8 MB | 7.9 MB | 0.82× |
 | string_heavy | 1.0 MB | 668 KB | 1.1 MB | 926 KB | 927 KB | 0.96× |
@@ -643,17 +637,17 @@ Measured on **Apple M4** (10 cores), Rust 1.92.0, `--release`, 10 iterations per
 | numeric_heavy | 3.7 MB | 3.7 MB | 6.0 MB | 3.5 MB | 3.5 MB | 0.63× |
 
 **Key takeaways:**
-- Crous **decode** is **2–5× faster** than JSON and CBOR for structured data
-- Crous is **smaller than JSON** across all datasets (0.63–0.96×)
-- Binary blobs: Crous stores raw bytes (no base64), achieving 0.75× JSON size
-- Numeric data: Crous varints achieve 0.63× JSON size
+- Surp **decode** is **2–5× faster** than JSON and CBOR for structured data
+- Surp is **smaller than JSON** across all datasets (0.63–0.96×)
+- Binary blobs: Surp stores raw bytes (no base64), achieving 0.75× JSON size
+- Numeric data: Surp varints achieve 0.63× JSON size
 - Dedup overhead makes output larger for small_objects/nested_deep (dict block overhead exceeds savings)
 
 ---
 
 ## Safety & Security
 
-- **No `unsafe` in `crous-core`** — all encoding/decoding is safe Rust
+- **No `unsafe` in `surp-core`** — all encoding/decoding is safe Rust
 - **All `unwrap()` calls** are in test code or preceded by bounds checks on fixed-size slices
 - **Resource limits** prevent DoS attacks: nesting depth, memory, block size, string length, item count
 - **Checksum verification** on every block (XXH64)
@@ -663,4 +657,4 @@ Measured on **Apple M4** (10 cores), Rust 1.92.0, `--release`, 10 iterations per
 
 ---
 
-*Generated from Crous v1.1.0 codebase. See `docs/SPEC.md` for the full wire format specification.*
+*Generated from Surp v1.1.0 codebase. See `docs/SPEC.md` for the full wire format specification.*

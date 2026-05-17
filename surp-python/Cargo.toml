@@ -1,0 +1,20 @@
+[package]
+name = "surp-python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
+description = "PyO3 Python bindings for the Surp encoder/decoder"
+publish = false
+rust-version.workspace = true
+
+[lib]
+name = "_surp_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+surp-core = { workspace = true }
+pyo3 = { version = "0.28", features = ["extension-module"] }

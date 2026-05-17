@@ -3,8 +3,8 @@
 //! All datasets are generated from fixed seeds so results are reproducible
 //! across machines and commits. Dataset integrity is verified via SHA-256 hashes.
 
-use crous_core::Value;
 use sha2::{Digest, Sha256};
+use surp_core::Value;
 
 /// Simple deterministic PRNG (xorshift64) — no external deps, fixed output.
 pub struct Rng {
@@ -55,7 +55,7 @@ impl Rng {
 /// Dataset version — bump when dataset generation logic changes.
 pub const DATASET_VERSION: &str = "1.0.0";
 
-/// A named benchmark dataset with its Crous Value and metadata.
+/// A named benchmark dataset with its Surp Value and metadata.
 #[derive(Clone)]
 pub struct Dataset {
     pub name: &'static str,
@@ -282,7 +282,7 @@ fn gen_mixed_api_events_n(n: usize) -> Dataset {
         "rust-lang/rust",
         "tokio-rs/tokio",
         "serde-rs/serde",
-        "crous-format/crous",
+        "surp-format/surp",
         "hyperium/hyper",
         "actix/actix-web",
         "diesel-rs/diesel",

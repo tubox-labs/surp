@@ -1,4 +1,4 @@
-# CROUS RFC-001 Implementation (Repository Status)
+# SURP RFC-001 Implementation (Repository Status)
 
 This document describes the executable RFC-001 implementation introduced in this repository.
 
@@ -6,18 +6,18 @@ This document describes the executable RFC-001 implementation introduced in this
 
 RFC-001 has been added as a **parallel v2 architecture** without breaking existing v1 APIs.
 
-Implemented in `crous-core/src/rfc001/`:
+Implemented in `surp-core/src/rfc001/`:
 
 - `ast.rs`: Native RFC data model (`Value`, `Scalar`, `Product`, `Sum`, `Tensor`, `Stream`, `Reference`, `Document`).
 - `ctn.rs`: RFC-style CTN parser/formatter (indentation-first syntax, `let`, `@annotations`, product/sum/sequence/map/tensor/stream forms).
 - `cbf.rs`: Segment-tree CBF encoder/decoder with 32-byte header, symbol table support, typed segments, and checksum trailer.
 - `cql.rs`: Baseline CQL path engine (`.field`, `[index]`, `[]`, map-key selectors).
 
-CLI integration in `crous-cli`:
+CLI integration in `surp-cli`:
 
-- `crous rfc-compile <input.ctn> -o <output.crb>`
-- `crous rfc-inspect <input.crb> [--ctn]`
-- `crous rfc-query <input.crb> '<expr>'`
+- `surp rfc-compile <input.ctn> -o <output.crb>`
+- `surp rfc-inspect <input.crb> [--ctn]`
+- `surp rfc-query <input.crb> '<expr>'`
 
 ## RFC-001 Features Currently Implemented
 
@@ -49,7 +49,7 @@ CLI integration in `crous-cli`:
 ### CBF
 
 - 32-byte header with RFC-aligned fields:
-  - magic `CROU`
+  - magic `SURP`
   - versions, flags, alignment, offsets
 - Segment headers (4-byte compact + 12-byte extended for large payloads)
 - Implemented segment categories:
@@ -70,7 +70,7 @@ CLI integration in `crous-cli`:
 ## Compatibility and Safety Notes
 
 - RFC-001 is additive: v1 APIs (`Encoder`, `Decoder`, `text`) are unchanged.
-- RFC-001 modules return the same crate-wide `CrousError` type for uniform handling.
+- RFC-001 modules return the same crate-wide `SurpError` type for uniform handling.
 - Decoder enforces nesting-depth limits during recursive segment decoding.
 - Checksum validation is mandatory in RFC-001 decode path.
 
@@ -88,9 +88,8 @@ The following are not yet fully implemented:
 
 ## Design Decision: Parallel V2 Path
 
-RFC-001 is intentionally built as `crous_core::rfc001::*` so teams can:
+RFC-001 is intentionally built as `surp_core::rfc001::*` so teams can:
 
 1. Keep v1 production workflows stable.
 2. Incrementally adopt RFC-001 capabilities.
 3. Benchmark and harden v2 before defaulting to it.
-

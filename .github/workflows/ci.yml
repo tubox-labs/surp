@@ -75,15 +75,15 @@ jobs:
         run: pip install pytest hypothesis
 
       - name: Build Rust CLI
-        run: cargo build -p crous-cli --release
+        run: cargo build -p surp-cli --release
 
       - name: Rust → Python interop
         run: |
           echo '{"name":"Alice","age":30,"active":true}' > /tmp/test.json
-          cargo run -p crous-cli --release -- from-json /tmp/test.json -o /tmp/test.crous
+          cargo run -p surp-cli --release -- from-json /tmp/test.json -o /tmp/test.surp
           cd python && python -c "
-          from crous.decoder import Decoder
-          with open('/tmp/test.crous', 'rb') as f:
+          from surp.decoder import Decoder
+          with open('/tmp/test.surp', 'rb') as f:
               data = f.read()
           dec = Decoder(data)
           result = dec.decode_next().to_python()
@@ -94,15 +94,15 @@ jobs:
       - name: Python → Rust interop
         run: |
           cd python && python -c "
-          from crous.encoder import Encoder
-          from crous.value import Value
+          from surp.encoder import Encoder
+          from surp.value import Value
           enc = Encoder()
           enc.encode_value(Value.from_python({'greeting': 'hello', 'count': 42}))
-          with open('/tmp/py_test.crous', 'wb') as f:
+          with open('/tmp/py_test.surp', 'wb') as f:
               f.write(enc.finish())
           print('Python encode: OK')
           "
-          cargo run -p crous-cli --release -- to-json /tmp/py_test.crous
+          cargo run -p surp-cli --release -- to-json /tmp/py_test.surp
 
   bench-smoke:
     name: Benchmark Smoke Test
@@ -113,7 +113,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run benchmarks (smoke)
-        run: cargo bench -p crous-core -- --test
+        run: cargo bench -p surp-core -- --test
 
   fuzz-smoke:
     name: Fuzz Smoke Test
