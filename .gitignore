@@ -17,3 +17,5 @@ build/
 *.egg-info/
 *.egg
 .maturin/
+.pytest_cache/
+surp-python/python/surp/_surp_native*.so

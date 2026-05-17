@@ -29,8 +29,10 @@ surp-python/
   python/surp/
     __init__.py           # public facade
     exceptions.py         # exception re-exports
+    model/                # RFC-001 class schema and validation layer
     rfc001.py             # CTN / CBF / CQL helpers
     __init__.pyi          # public API stubs
+    model/__init__.pyi    # RFC-001 model schema stubs
     rfc001.pyi            # RFC helper stubs
     _types.pyi            # shared TypedDict/Literal types
     py.typed              # PEP 561 marker
@@ -38,7 +40,7 @@ surp-python/
 ```
 
 `surp._surp_native` is private implementation detail. Application code should
-use `import surp` and `from surp import rfc001`.
+use `import surp`, `from surp import rfc001`, and `from surp.model import ...`.
 
 ## v1 Binary API
 
@@ -318,6 +320,43 @@ Model classes exported from `surp.rfc001` are `RfcAnnotation`, `RfcField`,
 `RfcBinding`, `RfcHeader`, `RfcDocument`, `RfcDecodedCbf`, and `RfcValue`.
 Each model has `to_dict()` where a compatibility dictionary is meaningful;
 `RfcDocument` and `RfcValue` also expose `to_ctn()`.
+
+### RFC-001 Class Schemas
+
+`surp.model` is a pure-Python validation layer built on top of `surp.rfc001`.
+It is RFC-001-specific: class annotations use Surp type markers rather than
+Python built-ins, and encode/decode paths use CTN/CBF through `surp.rfc001`.
+
+```python
+from surp.model import Field, SurpModel, SurpSymbolEnum
+from surp.model.types import Bool, Int64, MapOf, SeqOf, Str
+
+
+class Role(SurpSymbolEnum):
+    ADMIN = "Admin"
+    VIEWER = "Viewer"
+
+
+class User(SurpModel):
+    name: Str = Field(required=True)
+    age: Int64 = Field(required=False, default=0)
+    active: Bool = Field(required=True)
+    tags: SeqOf[Str] = Field(required=False, default_factory=list)
+    settings: MapOf[Str, Str] = Field(required=False, default_factory=dict)
+    role: Role = Field(required=True, default=Role.VIEWER)
+
+
+user = User(name="Alice", active=True, tags=["admin"], role=Role.ADMIN)
+ctn = user.to_ctn()
+cbf = user.to_cbf()
+assert User.from_cbf(cbf) == user
+assert user.query_one(".name") == "Alice"
+```
+
+Important public exports include `SurpModel`, `SurpDocument`,
+`SurpSymbolEnum`, `SurpVariant`, `SurpStream`, `Field`, `FieldInfo`,
+`annotation`, `registry`, `generate_model_stubs`, and `write_model_stubs`.
+Type markers live under `surp.model.types`.
 
 ## Examples
 
