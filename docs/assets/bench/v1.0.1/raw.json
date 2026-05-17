@@ -1,0 +1,1954 @@
+{
+  "version": "v1.0.1",
+  "timestamp": "2026-05-17T17:30:36.833184+00:00",
+  "system": {
+    "os": "macos",
+    "arch": "aarch64",
+    "cpu_model": "",
+    "cpu_cores": 10,
+    "ram_mb": 0,
+    "rust_version": "rustc 1.94.1 (e408947bf 2026-03-25) (Homebrew)"
+  },
+  "mode": "full",
+  "dataset_version": "1.0.0",
+  "measurements": [
+    {
+      "format": "surp",
+      "dataset": "small_objects",
+      "operation": "encode",
+      "durations_ns": [
+        18570541,
+        17867750,
+        18854042,
+        16854375,
+        16752667,
+        18059125,
+        16990250,
+        17900667,
+        16987375,
+        20816375
+      ],
+      "serialized_size": 9033510,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "small_objects",
+      "operation": "decode",
+      "durations_ns": [
+        21799291,
+        22463417,
+        20639292,
+        20035917,
+        19978250,
+        19201583,
+        19849917,
+        19073667,
+        18617625,
+        19024917
+      ],
+      "serialized_size": 9033510,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "small_objects",
+      "operation": "roundtrip",
+      "durations_ns": [
+        37094042,
+        39402125,
+        40955583,
+        40140583,
+        37459959,
+        36350125,
+        38011750,
+        35657916,
+        34140333,
+        36156834
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "small_objects",
+      "operation": "encode",
+      "durations_ns": [
+        69248292,
+        66119500,
+        72266500,
+        72609417,
+        65170167,
+        66808208,
+        71920583,
+        77623625,
+        86879750,
+        90686125
+      ],
+      "serialized_size": 12544271,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "small_objects",
+      "operation": "decode",
+      "durations_ns": [
+        45799041,
+        45859625,
+        45110750,
+        65375208,
+        53751000,
+        52247583,
+        51235042,
+        52246792,
+        52368209,
+        59806167
+      ],
+      "serialized_size": 12544271,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "small_objects",
+      "operation": "encode",
+      "durations_ns": [
+        20006375,
+        19872708,
+        18491708,
+        17238875,
+        18315417,
+        17018292,
+        17018209,
+        17135292,
+        17470584,
+        17543166
+      ],
+      "serialized_size": 11043299,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "small_objects",
+      "operation": "decode",
+      "durations_ns": [
+        62614459,
+        62907917,
+        62813916,
+        62658292,
+        66001083,
+        65553250,
+        71764583,
+        67776166,
+        64717292,
+        64552583
+      ],
+      "serialized_size": 11043299,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "small_objects",
+      "operation": "roundtrip",
+      "durations_ns": [
+        82695750,
+        83542333,
+        82621916,
+        85640792,
+        82769542,
+        82716208,
+        85053042,
+        95081417,
+        91788459,
+        90340667
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "small_objects",
+      "operation": "encode",
+      "durations_ns": [
+        14697542,
+        14512000,
+        14277000,
+        14437000,
+        14520125,
+        14240583,
+        13830375,
+        13557458,
+        14604667,
+        14909334
+      ],
+      "serialized_size": 8218533,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "small_objects",
+      "operation": "decode",
+      "durations_ns": [
+        85137167,
+        67991667,
+        64929375,
+        66380709,
+        61505750,
+        61467542,
+        61625166,
+        61134708,
+        60876625,
+        61302042
+      ],
+      "serialized_size": 8218533,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "small_objects",
+      "operation": "roundtrip",
+      "durations_ns": [
+        77353167,
+        67949708,
+        73387208,
+        73114500,
+        67200875,
+        67958125,
+        66896042,
+        65582250,
+        65817792,
+        65987167
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "small_objects",
+      "operation": "encode",
+      "durations_ns": [
+        15955500,
+        15828875,
+        15725542,
+        16334875,
+        15955708,
+        15750666,
+        15872166,
+        15721042,
+        15823250,
+        15787958
+      ],
+      "serialized_size": 8290641,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "small_objects",
+      "operation": "decode",
+      "durations_ns": [
+        196477208,
+        133998750,
+        131485500,
+        140672834,
+        150752417,
+        129167000,
+        129136917,
+        118809584,
+        109348750,
+        109768000
+      ],
+      "serialized_size": 8290641,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "small_objects",
+      "operation": "roundtrip",
+      "durations_ns": [
+        140961625,
+        128136750,
+        131891375,
+        129468500,
+        136259916,
+        130932333,
+        137494250,
+        137932334,
+        132000083,
+        129111958
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "small_objects",
+      "operation": "encode",
+      "durations_ns": [
+        27888375,
+        26532208,
+        25427958,
+        27320625,
+        29562625,
+        25261875,
+        24738416,
+        23948417,
+        24404292,
+        25565416
+      ],
+      "serialized_size": 11933477,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "small_objects",
+      "operation": "decode",
+      "durations_ns": [
+        78849250,
+        76721959,
+        75183625,
+        74501583,
+        74069166,
+        74062375,
+        73977083,
+        79802542,
+        92794958,
+        77494375
+      ],
+      "serialized_size": 11933477,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "small_objects",
+      "operation": "roundtrip",
+      "durations_ns": [
+        113922041,
+        106388833,
+        140829125,
+        121526375,
+        116523375,
+        111780708,
+        105952541,
+        99061583,
+        101140708,
+        100637666
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "string_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        1063750,
+        1063292,
+        1067500,
+        1062583,
+        1095917,
+        1069667,
+        1073583,
+        1067666,
+        1060333,
+        1063125
+      ],
+      "serialized_size": 1066808,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "string_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        1909083,
+        1916708,
+        1927458,
+        1906750,
+        1897292,
+        1890667,
+        1890708,
+        1891166,
+        1899334,
+        1944333
+      ],
+      "serialized_size": 1066808,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "string_heavy",
+      "operation": "roundtrip",
+      "durations_ns": [
+        3009792,
+        2983791,
+        2981041,
+        3019708,
+        2963417,
+        2952166,
+        2968792,
+        2981208,
+        3087792,
+        3005625
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "string_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        4760334,
+        4910292,
+        4791417,
+        4775375,
+        4792333,
+        4787750,
+        4763875,
+        4755417,
+        4900292,
+        4721750
+      ],
+      "serialized_size": 684352,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "string_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        3052417,
+        3109084,
+        3064250,
+        3063416,
+        3188916,
+        3092083,
+        3048416,
+        3022500,
+        3083959,
+        3083875
+      ],
+      "serialized_size": 684352,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "string_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        1188333,
+        1183208,
+        1250292,
+        1207500,
+        1239041,
+        1229000,
+        1292292,
+        1188750,
+        1174083,
+        1165125
+      ],
+      "serialized_size": 1106773,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "string_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        5257042,
+        5144958,
+        5303584,
+        5098416,
+        5154042,
+        5159708,
+        5126125,
+        5183666,
+        5399625,
+        5128750
+      ],
+      "serialized_size": 1106773,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "string_heavy",
+      "operation": "roundtrip",
+      "durations_ns": [
+        6770583,
+        6553500,
+        6568375,
+        6570416,
+        6583541,
+        6436458,
+        6394334,
+        6331042,
+        6419125,
+        6306541
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "string_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        1035667,
+        1008416,
+        1716292,
+        1039666,
+        1018000,
+        1009000,
+        981000,
+        918875,
+        916917,
+        911542
+      ],
+      "serialized_size": 948000,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "string_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        4449791,
+        4422125,
+        4530625,
+        4448000,
+        4457042,
+        4428250,
+        4435000,
+        4439459,
+        4403709,
+        4403500
+      ],
+      "serialized_size": 948000,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "string_heavy",
+      "operation": "roundtrip",
+      "durations_ns": [
+        5504000,
+        5441583,
+        5432500,
+        5458583,
+        5398500,
+        5422750,
+        5387166,
+        5367500,
+        5418125,
+        5389500
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "string_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        1065667,
+        1060125,
+        1062375,
+        1064083,
+        1066625,
+        1075584,
+        1065167,
+        1062000,
+        1058833,
+        1057000
+      ],
+      "serialized_size": 949239,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "string_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        7587709,
+        7562458,
+        7993042,
+        7650667,
+        7550708,
+        7575583,
+        7559083,
+        7590125,
+        7599958,
+        7529292
+      ],
+      "serialized_size": 949239,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "string_heavy",
+      "operation": "roundtrip",
+      "durations_ns": [
+        8725625,
+        8648541,
+        8833125,
+        8835625,
+        8760292,
+        8785041,
+        8873416,
+        8747042,
+        8756417,
+        8744208
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "string_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        1981917,
+        1984084,
+        1982291,
+        1991375,
+        1980666,
+        1978000,
+        1987292,
+        1988625,
+        1977375,
+        1987459
+      ],
+      "serialized_size": 1219215,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "string_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        6052375,
+        6025583,
+        6040208,
+        6058833,
+        6066917,
+        6028750,
+        6026125,
+        6071334,
+        6061333,
+        6042167
+      ],
+      "serialized_size": 1219215,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "string_heavy",
+      "operation": "roundtrip",
+      "durations_ns": [
+        8109667,
+        8082375,
+        8040083,
+        8060250,
+        8043458,
+        8028583,
+        8163417,
+        8181291,
+        8182584,
+        8183417
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "nested_deep",
+      "operation": "encode",
+      "durations_ns": [
+        5110250,
+        2462083,
+        2466875,
+        2421166,
+        2416958,
+        2432833,
+        2417958,
+        2414333,
+        2412417,
+        2419208
+      ],
+      "serialized_size": 1092033,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "nested_deep",
+      "operation": "decode",
+      "durations_ns": [
+        4751500,
+        4731625,
+        4736417,
+        4762750,
+        4750167,
+        4731084,
+        4797000,
+        4753875,
+        4736292,
+        4735166
+      ],
+      "serialized_size": 1092033,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "nested_deep",
+      "operation": "roundtrip",
+      "durations_ns": [
+        7164375,
+        7146375,
+        6722375,
+        6453042,
+        6474583,
+        6439708,
+        6444166,
+        6414250,
+        6426625,
+        6476250
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "nested_deep",
+      "operation": "encode",
+      "durations_ns": [
+        10393708,
+        10528458,
+        10490708,
+        10452917,
+        10476750,
+        10519791,
+        10518083,
+        10535791,
+        10618292,
+        10768500
+      ],
+      "serialized_size": 1621048,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "nested_deep",
+      "operation": "decode",
+      "durations_ns": [
+        9074334,
+        9009834,
+        8963917,
+        8092666,
+        8063833,
+        8085834,
+        8060917,
+        8058208,
+        8084125,
+        8063250
+      ],
+      "serialized_size": 1621048,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "nested_deep",
+      "operation": "encode",
+      "durations_ns": [
+        2848000,
+        3282708,
+        2985208,
+        2391792,
+        2328625,
+        2434083,
+        2601875,
+        2352209,
+        2248250,
+        2222917
+      ],
+      "serialized_size": 1257725,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "nested_deep",
+      "operation": "decode",
+      "durations_ns": [
+        10020625,
+        10014875,
+        9926625,
+        9935292,
+        9825042,
+        9926625,
+        9972875,
+        10041500,
+        9861041,
+        9929584
+      ],
+      "serialized_size": 1257725,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "nested_deep",
+      "operation": "roundtrip",
+      "durations_ns": [
+        13019708,
+        13014417,
+        12934500,
+        13857416,
+        14323625,
+        12965917,
+        12867292,
+        13359000,
+        13021750,
+        13027750
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "nested_deep",
+      "operation": "encode",
+      "durations_ns": [
+        2291125,
+        2252000,
+        2264416,
+        2228709,
+        2460542,
+        2337583,
+        2228542,
+        2241792,
+        2190458,
+        2202750
+      ],
+      "serialized_size": 855111,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "nested_deep",
+      "operation": "decode",
+      "durations_ns": [
+        8858917,
+        8895750,
+        8822875,
+        8880417,
+        9135417,
+        9102500,
+        9082375,
+        8866375,
+        9206750,
+        9138709
+      ],
+      "serialized_size": 855111,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "nested_deep",
+      "operation": "roundtrip",
+      "durations_ns": [
+        12063333,
+        12095542,
+        17500209,
+        11737292,
+        11545125,
+        11534625,
+        11357250,
+        11191292,
+        11817417,
+        11591333
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "nested_deep",
+      "operation": "encode",
+      "durations_ns": [
+        3019125,
+        2779750,
+        2792375,
+        2654041,
+        3084167,
+        3083500,
+        2919959,
+        2816709,
+        2715125,
+        2836542
+      ],
+      "serialized_size": 855302,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "nested_deep",
+      "operation": "decode",
+      "durations_ns": [
+        14709917,
+        14825166,
+        14787750,
+        14815125,
+        14713791,
+        14501083,
+        14728292,
+        14560958,
+        14652250,
+        14562416
+      ],
+      "serialized_size": 855302,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "nested_deep",
+      "operation": "roundtrip",
+      "durations_ns": [
+        17839375,
+        17850750,
+        17762916,
+        17870417,
+        17996916,
+        18480833,
+        18151750,
+        17968500,
+        17871417,
+        17941250
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "nested_deep",
+      "operation": "encode",
+      "durations_ns": [
+        31644583,
+        30198458,
+        30002500,
+        31244916,
+        32086000,
+        32885708,
+        33327167,
+        33091875,
+        32348292,
+        33534083
+      ],
+      "serialized_size": 1506305,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "nested_deep",
+      "operation": "decode",
+      "durations_ns": [
+        10934875,
+        10820166,
+        10945584,
+        10975542,
+        10877375,
+        11075750,
+        11181750,
+        11153875,
+        10825041,
+        11079125
+      ],
+      "serialized_size": 1506305,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "nested_deep",
+      "operation": "roundtrip",
+      "durations_ns": [
+        44795833,
+        45293292,
+        44291750,
+        44348416,
+        44540208,
+        44564208,
+        44319375,
+        44273167,
+        44233916,
+        44323375
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "binary_blobs",
+      "operation": "encode",
+      "durations_ns": [
+        1903959,
+        2925500,
+        2230459,
+        2644417,
+        2861833,
+        2446584,
+        2996584,
+        3218792,
+        2802167,
+        2791375
+      ],
+      "serialized_size": 6685219,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "binary_blobs",
+      "operation": "decode",
+      "durations_ns": [
+        430166,
+        429875,
+        430125,
+        430000,
+        432458,
+        429958,
+        429708,
+        430000,
+        430291,
+        429208
+      ],
+      "serialized_size": 6685219,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "binary_blobs",
+      "operation": "roundtrip",
+      "durations_ns": [
+        3491791,
+        3495916,
+        3617916,
+        3637292,
+        3664667,
+        3528958,
+        3532458,
+        3620917,
+        3645708,
+        3496750
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "binary_blobs",
+      "operation": "encode",
+      "durations_ns": [
+        2993167,
+        2976583,
+        3055708,
+        3451834,
+        3537584,
+        3555167,
+        3524250,
+        3503833,
+        3551667,
+        3637125
+      ],
+      "serialized_size": 6682783,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "binary_blobs",
+      "operation": "decode",
+      "durations_ns": [
+        433584,
+        433875,
+        430083,
+        434042,
+        436500,
+        432958,
+        436041,
+        434875,
+        430542,
+        432208
+      ],
+      "serialized_size": 6682783,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "binary_blobs",
+      "operation": "encode",
+      "durations_ns": [
+        5201292,
+        4998917,
+        5164292,
+        5240041,
+        4954041,
+        5084375,
+        5171500,
+        4957375,
+        5009875,
+        5386209
+      ],
+      "serialized_size": 8912551,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "binary_blobs",
+      "operation": "decode",
+      "durations_ns": [
+        1382416,
+        1372875,
+        1375083,
+        1374750,
+        1375208,
+        1378333,
+        1372958,
+        1380208,
+        1381167,
+        1426458
+      ],
+      "serialized_size": 8912551,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "binary_blobs",
+      "operation": "roundtrip",
+      "durations_ns": [
+        9748167,
+        7129917,
+        7057750,
+        6946291,
+        6919041,
+        7243084,
+        6878958,
+        6996750,
+        6866667,
+        7072083
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "binary_blobs",
+      "operation": "encode",
+      "durations_ns": [
+        1417958,
+        1400458,
+        1374042,
+        1478250,
+        1472000,
+        1416750,
+        1359625,
+        1436416,
+        1316500,
+        1361209
+      ],
+      "serialized_size": 8911223,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "binary_blobs",
+      "operation": "decode",
+      "durations_ns": [
+        461541,
+        461500,
+        461125,
+        460833,
+        459833,
+        472584,
+        462292,
+        461833,
+        463208,
+        463125
+      ],
+      "serialized_size": 8911223,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "binary_blobs",
+      "operation": "roundtrip",
+      "durations_ns": [
+        2327208,
+        2199083,
+        2188250,
+        2307417,
+        2169375,
+        2234042,
+        2238000,
+        2178833,
+        2539375,
+        2231709
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "binary_blobs",
+      "operation": "encode",
+      "durations_ns": [
+        1488833,
+        1470916,
+        1411833,
+        1361792,
+        1272041,
+        1258042,
+        1360584,
+        1317625,
+        1344834,
+        1291625
+      ],
+      "serialized_size": 8911398,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "binary_blobs",
+      "operation": "decode",
+      "durations_ns": [
+        962292,
+        943125,
+        936458,
+        930541,
+        982625,
+        942125,
+        938125,
+        930292,
+        947500,
+        924750
+      ],
+      "serialized_size": 8911398,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "binary_blobs",
+      "operation": "roundtrip",
+      "durations_ns": [
+        2752125,
+        2786292,
+        2565708,
+        2804167,
+        2758375,
+        3234959,
+        2720792,
+        2785459,
+        2642917,
+        2682959
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "binary_blobs",
+      "operation": "encode",
+      "durations_ns": [
+        181208,
+        183250,
+        182333,
+        176958,
+        180000,
+        191791,
+        189750,
+        193458,
+        190458,
+        194833
+      ],
+      "serialized_size": 6687888,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "binary_blobs",
+      "operation": "decode",
+      "durations_ns": [
+        414292,
+        414125,
+        418917,
+        416375,
+        417750,
+        418667,
+        424583,
+        463041,
+        427125,
+        423167
+      ],
+      "serialized_size": 6687888,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "binary_blobs",
+      "operation": "roundtrip",
+      "durations_ns": [
+        652750,
+        649584,
+        641792,
+        661500,
+        640917,
+        649125,
+        625792,
+        641667,
+        642750,
+        661875
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "mixed_api_events",
+      "operation": "encode",
+      "durations_ns": [
+        1746917,
+        1744000,
+        1739583,
+        1736583,
+        1741833,
+        1740333,
+        1744875,
+        1750792,
+        1737625,
+        1742333
+      ],
+      "serialized_size": 1951782,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "mixed_api_events",
+      "operation": "decode",
+      "durations_ns": [
+        2661916,
+        2654333,
+        2652917,
+        2632167,
+        2611458,
+        2602916,
+        2605541,
+        2613833,
+        2621584,
+        2610667
+      ],
+      "serialized_size": 1951782,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "mixed_api_events",
+      "operation": "roundtrip",
+      "durations_ns": [
+        4350042,
+        4346042,
+        4382417,
+        4392916,
+        4401000,
+        4372125,
+        4360791,
+        4368916,
+        4380875,
+        4346667
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "mixed_api_events",
+      "operation": "encode",
+      "durations_ns": [
+        8257875,
+        8345834,
+        8263792,
+        8201792,
+        8169791,
+        8311625,
+        8246833,
+        8285625,
+        8140542,
+        8241416
+      ],
+      "serialized_size": 2907531,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "mixed_api_events",
+      "operation": "decode",
+      "durations_ns": [
+        5407375,
+        5363834,
+        5375083,
+        5647375,
+        5429833,
+        5441583,
+        5384250,
+        5411000,
+        5404084,
+        5425875
+      ],
+      "serialized_size": 2907531,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "mixed_api_events",
+      "operation": "encode",
+      "durations_ns": [
+        2108834,
+        2104833,
+        2096042,
+        2091166,
+        2079417,
+        2074125,
+        2085833,
+        2090666,
+        2086417,
+        2069000
+      ],
+      "serialized_size": 2124706,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "mixed_api_events",
+      "operation": "decode",
+      "durations_ns": [
+        7909541,
+        7939417,
+        7902625,
+        7922375,
+        7884750,
+        7874459,
+        7862250,
+        7878083,
+        7833834,
+        7859667
+      ],
+      "serialized_size": 2124706,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "mixed_api_events",
+      "operation": "roundtrip",
+      "durations_ns": [
+        10089209,
+        9973042,
+        9987667,
+        9955584,
+        9973875,
+        9925583,
+        9976875,
+        9990584,
+        9943209,
+        9855542
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "mixed_api_events",
+      "operation": "encode",
+      "durations_ns": [
+        1497083,
+        1515500,
+        1529667,
+        1492041,
+        1484875,
+        1486791,
+        1512333,
+        1494250,
+        1495708,
+        1491209
+      ],
+      "serialized_size": 1832783,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "mixed_api_events",
+      "operation": "decode",
+      "durations_ns": [
+        6788042,
+        6754041,
+        6750000,
+        6719250,
+        6730000,
+        6792792,
+        6721708,
+        6725291,
+        6725042,
+        6758167
+      ],
+      "serialized_size": 1832783,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "mixed_api_events",
+      "operation": "roundtrip",
+      "durations_ns": [
+        8228500,
+        8284541,
+        8242792,
+        8216000,
+        8203375,
+        8306417,
+        8247583,
+        8221708,
+        11490750,
+        8358791
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "mixed_api_events",
+      "operation": "encode",
+      "durations_ns": [
+        1825041,
+        1828625,
+        1831250,
+        1830542,
+        1827917,
+        1821250,
+        1827625,
+        1824083,
+        1819666,
+        1821292
+      ],
+      "serialized_size": 1832844,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "mixed_api_events",
+      "operation": "decode",
+      "durations_ns": [
+        12595000,
+        12686458,
+        12658708,
+        12637958,
+        12719500,
+        12639333,
+        12589625,
+        12619542,
+        12641334,
+        12749958
+      ],
+      "serialized_size": 1832844,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "mixed_api_events",
+      "operation": "roundtrip",
+      "durations_ns": [
+        14316375,
+        14424083,
+        14357708,
+        14649666,
+        14585875,
+        14579250,
+        14663667,
+        15224166,
+        17975625,
+        19247459
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "mixed_api_events",
+      "operation": "encode",
+      "durations_ns": [
+        4135250,
+        4114791,
+        4224042,
+        4508708,
+        4268375,
+        4286708,
+        4249417,
+        4074500,
+        4106708,
+        4052250
+      ],
+      "serialized_size": 2295615,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "mixed_api_events",
+      "operation": "decode",
+      "durations_ns": [
+        10555042,
+        10053041,
+        9916708,
+        10401208,
+        10060958,
+        10082125,
+        9934333,
+        10159000,
+        10010792,
+        10011500
+      ],
+      "serialized_size": 2295615,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "mixed_api_events",
+      "operation": "roundtrip",
+      "durations_ns": [
+        14471500,
+        14728833,
+        14264416,
+        14120791,
+        14098417,
+        14048458,
+        14046083,
+        14772000,
+        14829083,
+        14784709
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "numeric_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        6193166,
+        6031916,
+        6242167,
+        6057167,
+        6396750,
+        6357625,
+        6345750,
+        6371000,
+        6332708,
+        6403542
+      ],
+      "serialized_size": 3920531,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "numeric_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        7296833,
+        7648292,
+        7606666,
+        7576459,
+        7546292,
+        7371708,
+        7530541,
+        7286000,
+        7283208,
+        11363125
+      ],
+      "serialized_size": 3920531,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp",
+      "dataset": "numeric_heavy",
+      "operation": "roundtrip",
+      "durations_ns": [
+        14270291,
+        14590833,
+        14807708,
+        14825000,
+        14311125,
+        14489500,
+        14764708,
+        15095834,
+        15401000,
+        15073709
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "numeric_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        6226084,
+        5728083,
+        5837458,
+        5637000,
+        5580208,
+        5620333,
+        5644959,
+        5721833,
+        5810208,
+        5670916
+      ],
+      "serialized_size": 3920531,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "surp_dedup",
+      "dataset": "numeric_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        8234167,
+        8164250,
+        8341042,
+        8076958,
+        8145750,
+        8009125,
+        8150209,
+        8050709,
+        8238209,
+        8181167
+      ],
+      "serialized_size": 3920531,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "numeric_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        9485958,
+        9224416,
+        8653542,
+        8310917,
+        8588750,
+        8414958,
+        8323291,
+        8278542,
+        8305084,
+        8327917
+      ],
+      "serialized_size": 6258769,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "numeric_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        25660083,
+        25672500,
+        25722542,
+        25315416,
+        25169167,
+        25577916,
+        25459750,
+        25063375,
+        25002000,
+        25033375
+      ],
+      "serialized_size": 6258769,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "json",
+      "dataset": "numeric_heavy",
+      "operation": "roundtrip",
+      "durations_ns": [
+        34208958,
+        34758708,
+        34799917,
+        34417833,
+        34297834,
+        34181458,
+        34476625,
+        34990625,
+        34742791,
+        34856458
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "numeric_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        4891084,
+        4865708,
+        4860625,
+        4833750,
+        4915250,
+        4901625,
+        4879625,
+        4875666,
+        4849083,
+        4901333
+      ],
+      "serialized_size": 3642410,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "numeric_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        18888084,
+        18955292,
+        18875375,
+        18862125,
+        19080209,
+        18946125,
+        18869458,
+        18880041,
+        18954750,
+        19098875
+      ],
+      "serialized_size": 3642410,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "msgpack",
+      "dataset": "numeric_heavy",
+      "operation": "roundtrip",
+      "durations_ns": [
+        24511083,
+        24397333,
+        24128291,
+        24159334,
+        24546000,
+        24546583,
+        24700750,
+        24557667,
+        24522750,
+        24656459
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "numeric_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        5614958,
+        5616416,
+        5647416,
+        5681667,
+        5635541,
+        5652125,
+        5632750,
+        6097250,
+        6264709,
+        6287709
+      ],
+      "serialized_size": 3629913,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "numeric_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        40088375,
+        42865500,
+        42493667,
+        42671333,
+        42543083,
+        42492541,
+        42230500,
+        38098959,
+        38146583,
+        40460708
+      ],
+      "serialized_size": 3629913,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "cbor",
+      "dataset": "numeric_heavy",
+      "operation": "roundtrip",
+      "durations_ns": [
+        45579583,
+        47504916,
+        51327125,
+        50061167,
+        48076292,
+        44915250,
+        49614583,
+        50812209,
+        50356125,
+        49183750
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "numeric_heavy",
+      "operation": "encode",
+      "durations_ns": [
+        11601750,
+        10536500,
+        10623167,
+        10632917,
+        11708875,
+        10624625,
+        11414750,
+        11643167,
+        11615166,
+        10841125
+      ],
+      "serialized_size": 5220498,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "numeric_heavy",
+      "operation": "decode",
+      "durations_ns": [
+        26731000,
+        26866875,
+        27209542,
+        25515375,
+        24961584,
+        25809417,
+        26862708,
+        26670625,
+        26215041,
+        26139084
+      ],
+      "serialized_size": 5220498,
+      "peak_rss_bytes": null
+    },
+    {
+      "format": "protobuf",
+      "dataset": "numeric_heavy",
+      "operation": "roundtrip",
+      "durations_ns": [
+        34584875,
+        37276708,
+        38085750,
+        37149167,
+        39011209,
+        38526334,
+        38727042,
+        38463833,
+        38182500,
+        36513750
+      ],
+      "serialized_size": null,
+      "peak_rss_bytes": null
+    }
+  ]
+}

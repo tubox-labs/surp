@@ -15,10 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
-## [1.0.1] - 2026-05-17 (pre-release)
+## [1.0.1] - 2026-05-17
 
-This is a pre-release changelog entry for validation and packaging review. No
-release tag or GitHub release has been created for this version.
+This patch release promotes the staged `v1.0.1` API work, expands release
+documentation, and adds committed benchmark evidence for the public release.
 
 ### Added
 
@@ -41,6 +41,13 @@ release tag or GitHub release has been created for this version.
   `query_cbf_model`, and `query_ctn_model`.
 - Added a private `_surp_native.pyi` stub so Pyright and other type checkers can
   resolve the compiled extension module through the public facade.
+- Added Protocol Buffers coverage to the Rust benchmark harness using a generic
+  value schema that can represent the same schema-less benchmark payloads as
+  Surp, JSON, MessagePack, and CBOR.
+- Added SVG benchmark chart generation for serialized size, encode throughput,
+  and decode throughput.
+- Added committed `v1.0.1` benchmark artifacts under
+  `docs/assets/bench/v1.0.1`.
 
 ### Changed
 
@@ -53,6 +60,11 @@ release tag or GitHub release has been created for this version.
   keeping the existing dictionary and built-in Python value APIs documented.
 - Updated Python packaging metadata to ship package-local README and license
   files directly with wheels and sdists.
+- Rewrote the root README as a complete project guide covering installation,
+  Rust/Python/CLI usage, RFC-001, Python RFC models, local development,
+  benchmarks, and release workflow.
+- Updated Rust workspace version metadata from `1.0.0` to `1.0.1` so the Rust
+  crates align with the Python package and release tag.
 
 ### Fixed
 
@@ -62,6 +74,18 @@ release tag or GitHub release has been created for this version.
   providing a typed private stub for the native extension import.
 - Fixed RFC-001 query overload stubs so `as_ctn=True` and `as_ctn=False` are
   distinguishable to type checkers.
+
+### Validation
+
+- `cargo check -p surp-bench`
+- `cargo fmt --all -- --check`
+- `cargo test --workspace --all-features`
+- `cargo clippy --workspace --all-features -- -D warnings`
+- `cargo run -p surp-bench --release -- --mode full --output docs/assets/bench/v1.0.1 --version v1.0.1`
+- `cd surp-python && ../.venv/bin/maturin develop --release`
+- `cd surp-python && ../.venv/bin/python -m pytest tests/ -v`
+- `cd surp-python && ../.venv/bin/python -m mypy python/surp`
+- `cd surp-python && ../.venv/bin/pyright python/surp`
 
 ## [1.0.0] - 2026-05-17
 

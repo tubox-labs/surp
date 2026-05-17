@@ -1,11 +1,13 @@
-# Surp v1.0.1 Pre-release Notes
+# Surp v1.0.1 Release Notes
 
-Surp `v1.0.1` is staged as a pre-release update for validation. Do not create a
-GitHub release or tag from this entry yet.
+Surp `v1.0.1` is a patch release for the Rust-backed Surp serialization
+toolkit. It promotes the staged Python model and introspection APIs, aligns Rust
+workspace metadata with the Python package version, and ships a full README plus
+committed benchmark charts.
 
 ## Release Title
 
-Surp v1.0.1 (pre-release)
+Surp v1.0.1
 
 ## Highlights
 
@@ -31,6 +33,42 @@ Surp v1.0.1 (pre-release)
 - Packages the Python README and license files directly with wheels and sdists.
 - Fixes RFC-001 empty-map formatting so canonical CTN stays parseable and
   normalization remains idempotent.
+- Rewrites the root README as a complete installation, API, RFC-001, Python
+  model, benchmark, and local development guide.
+- Adds Protocol Buffers to the Rust benchmark harness and generates release
+  SVG charts for serialized size, encode throughput, and decode throughput.
+- Commits full benchmark artifacts under `docs/assets/bench/v1.0.1`.
+- Updates Rust workspace package and dependency metadata to `1.0.1`.
+
+## Benchmark Artifacts
+
+The `v1.0.1` release benchmark was run locally with:
+
+```sh
+cargo run -p surp-bench --release -- --mode full --output docs/assets/bench/v1.0.1 --version v1.0.1
+```
+
+Committed artifacts:
+
+- `docs/assets/bench/v1.0.1/raw.json`
+- `docs/assets/bench/v1.0.1/summary.csv`
+- `docs/assets/bench/v1.0.1/regression_report.md`
+- `docs/assets/bench/v1.0.1/size_comparison.md`
+- `docs/assets/bench/v1.0.1/system_info.json`
+- `docs/assets/bench/v1.0.1/charts/serialized-size.svg`
+- `docs/assets/bench/v1.0.1/charts/encode-throughput.svg`
+- `docs/assets/bench/v1.0.1/charts/decode-throughput.svg`
+
+Size summary:
+
+| Dataset | Surp | Surp+Dedup | JSON | MsgPack | Protobuf | Surp/JSON |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| small_objects | 8.6 MB | 12.0 MB | 10.5 MB | 7.8 MB | 11.4 MB | 0.82x |
+| string_heavy | 1.0 MB | 668.3 KB | 1.1 MB | 925.8 KB | 1.2 MB | 0.96x |
+| nested_deep | 1.0 MB | 1.5 MB | 1.2 MB | 835.1 KB | 1.4 MB | 0.87x |
+| binary_blobs | 6.4 MB | 6.4 MB | 8.5 MB | 8.5 MB | 6.4 MB | 0.75x |
+| mixed_api_events | 1.9 MB | 2.8 MB | 2.0 MB | 1.7 MB | 2.2 MB | 0.92x |
+| numeric_heavy | 3.7 MB | 3.7 MB | 6.0 MB | 3.5 MB | 5.0 MB | 0.63x |
 
 ## Validation
 
@@ -38,8 +76,10 @@ Validated locally with:
 
 ```sh
 cargo fmt --all -- --check
-cargo test --workspace
-cargo clippy --workspace -- -D warnings
+cargo test --workspace --all-features
+cargo clippy --workspace --all-features -- -D warnings
+cargo check -p surp-bench
+cargo run -p surp-bench --release -- --mode full --output docs/assets/bench/v1.0.1 --version v1.0.1
 cd surp-python
 ../.venv/bin/maturin develop --release
 ../.venv/bin/python -m pytest tests/ -v
@@ -47,11 +87,19 @@ cd surp-python
 ../.venv/bin/pyright python/surp
 ```
 
+Additional validation expected before publishing distribution artifacts:
+
+```sh
+cargo +nightly fuzz run fuzz_decode -- -max_total_time=30 -max_len=4096
+cargo +nightly fuzz run fuzz_roundtrip -- -max_total_time=30 -max_len=4096
+```
+
 ## Notes
 
-- This is a pre-release entry only.
-- No release tag has been created.
-- No GitHub release has been created.
+- Release tag: `v1.0.1`
+- GitHub release title: `Surp v1.0.1`
+- The release notes used by `gh release create` live at
+  `.github/releases/v1.0.1.md`.
 
 # Surp v1.0.0 Release Notes
 
