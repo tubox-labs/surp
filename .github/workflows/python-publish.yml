@@ -1,8 +1,8 @@
 # ---------------------------------------------------------------------------
-# CI workflow: build surp-native wheels for all platforms and publish to PyPI
+# CI workflow: build surp wheels for all platforms and publish to PyPI
 #
 # Triggers:
-#   - Push tag matching "python-v*" (e.g. python-v1.1.0) → full build + PyPI publish
+#   - Push tag matching "python-v*" (e.g. python-v1.0.0) → full build + PyPI publish
 #   - Manual workflow_dispatch → build only (publish skipped unless release flag set)
 #   - Pull requests touching surp-python/ → build only (smoke test)
 #
@@ -216,53 +216,59 @@ jobs:
           path: dist
 
       - name: Install wheel
-        run: pip install --find-links dist --no-index --force-reinstall surp-native
+        run: pip install --find-links dist --no-index --force-reinstall surp
 
       - name: Smoke test
         run: |
           python -c "
-          import _surp_native as cn
+          import surp
           import os, tempfile
 
           # Module version
-          assert hasattr(cn, '__version__'), 'missing __version__'
+          assert hasattr(surp, '__version__'), 'missing __version__'
 
           # Encode / decode roundtrip
           obj = {'name': 'Alice', 'age': 30, 'active': True}
-          data = cn.encode(obj)
+          data = surp.encode(obj)
           assert isinstance(data, bytes) and len(data) > 0
-          decoded = cn.decode(data)
+          decoded = surp.decode(data)
           assert decoded == obj, 'roundtrip failed: ' + repr(decoded)
 
           # Encoder class
-          enc = cn.Encoder()
+          enc = surp.Encoder()
           enc.encode([1, 2, 3])
           buf = enc.finish()
-          assert cn.decode(buf) == [1, 2, 3]
+          assert surp.decode(buf) == [1, 2, 3]
 
           # Decoder class
-          dec = cn.SurpDecoder(data)
+          dec = surp.SurpDecoder(data)
           vals = dec.decode_all()
           assert vals[0] == obj
 
           # File I/O roundtrip
           tmp = os.path.join(tempfile.gettempdir(), 'surp_smoke.surp')
-          cn.encode_to_file(obj, tmp)
+          surp.encode_to_file(obj, tmp)
           assert os.path.isfile(tmp)
-          decoded2 = cn.decode_from_file(tmp)
+          decoded2 = surp.decode_from_file(tmp)
           assert decoded2 == obj, 'file roundtrip failed: ' + repr(decoded2)
           os.remove(tmp)
 
           # Encoder finish_to_file
-          enc2 = cn.Encoder()
+          enc2 = surp.Encoder()
           enc2.encode({'x': 42})
           enc2.finish_to_file(tmp)
-          assert cn.decode_from_file(tmp) == {'x': 42}
+          assert surp.decode_from_file(tmp) == {'x': 42}
           os.remove(tmp)
 
           # Pretty-print
-          text = cn.pretty_print(obj)
+          text = surp.pretty_print(obj)
           assert 'Alice' in text
+
+          # RFC-001 CTN / CBF / CQL
+          ctn = 'User\n  name = \"Alice\"\n  tags = [\"admin\", \"ops\"]'
+          cbf = surp.rfc001.compile_ctn(ctn)
+          assert cbf[:4] == surp.rfc001.CBF_MAGIC
+          assert surp.rfc001.query_cbf(cbf, '.tags[-1]', as_ctn=True) == ['\"ops\"']
 
           import sys
           print('All smoke tests passed (Python ' + sys.version + ')')
@@ -280,7 +286,7 @@ jobs:
       || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
     environment:
       name: pypi
-      url: https://pypi.org/project/surp-native/
+      url: https://pypi.org/project/surp/
     permissions:
       id-token: write   # for trusted publishing via OIDC
     steps:

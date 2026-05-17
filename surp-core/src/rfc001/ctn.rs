@@ -892,6 +892,15 @@ fn parse_numeric_literal(s: &str) -> Result<Option<Scalar>> {
         }));
     }
 
+    if matches!(suffix, "f32" | "f16" | "bf16" | "f64" | "f128") {
+        let parsed = parse_float_text(body)?;
+        return Ok(Some(match suffix {
+            "f32" | "f16" | "bf16" => Scalar::F32(parsed as f32),
+            "f64" | "f128" => Scalar::F64(parsed),
+            _ => unreachable!("float suffix match is exhaustive"),
+        }));
+    }
+
     let value_i128 = parse_integer_text(body)?;
 
     let scalar = match suffix {
@@ -1056,7 +1065,7 @@ fn parse_quoted_string(s: &str) -> Result<String> {
                     ));
                 }
                 let mut hex = String::new();
-                while let Some(c) = chars.next() {
+                for c in chars.by_ref() {
                     if c == '}' {
                         break;
                     }
@@ -1292,11 +1301,7 @@ fn split_top_level(input: &str, delimiter: char) -> Vec<&str> {
     parts
 }
 
-fn split_once_required<'a>(
-    input: &'a str,
-    sep: impl AsRef<str>,
-    line: usize,
-) -> Result<(&'a str, &'a str)> {
+fn split_once_required(input: &str, sep: impl AsRef<str>, line: usize) -> Result<(&str, &str)> {
     let sep = sep.as_ref();
     let Some((lhs, rhs)) = input.split_once(sep) else {
         return Err(parse_err(
@@ -1652,11 +1657,7 @@ fn format_scalar(s: &Scalar) -> String {
         ),
         Scalar::Sym(v) => format!("'{v}"),
         Scalar::Tagged { tag, value } => {
-            if value.contains(' ') {
-                format!("{tag}\"{}\"", escape_string(value))
-            } else {
-                format!("{tag}\"{}\"", escape_string(value))
-            }
+            format!("{tag}\"{}\"", escape_string(value))
         }
     }
 }

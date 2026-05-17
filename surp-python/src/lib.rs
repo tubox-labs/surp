@@ -13,9 +13,10 @@
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDict, PyFloat, PyInt, PyList, PyString};
+use pyo3::types::{PyBool, PyBytes, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 
 use surp_core::limits::Limits;
+use surp_core::rfc001;
 use surp_core::wire::CompressionType;
 use surp_core::{Decoder as CoreDecoder, Encoder as CoreEncoder, Value};
 
@@ -56,6 +57,12 @@ create_exception!(
     SurpEncodeError,
     "Type cannot be serialized."
 );
+create_exception!(
+    _surp_native,
+    SurpRfcError,
+    SurpError,
+    "Error in RFC-001 CTN/CBF/CQL processing."
+);
 
 /// Map a surp_core error to our custom exception hierarchy.
 fn map_decode_error(e: surp_core::SurpError) -> PyErr {
@@ -69,6 +76,10 @@ fn map_decode_error(e: surp_core::SurpError) -> PyErr {
 
 fn map_encode_error(e: surp_core::SurpError) -> PyErr {
     SurpEncodeError::new_err(e.to_string())
+}
+
+fn map_rfc_error(e: surp_core::SurpError) -> PyErr {
+    SurpRfcError::new_err(e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +140,14 @@ fn py_to_value(obj: &Bound<'_, PyAny>, sort_keys: bool) -> PyResult<Value> {
         }
         return Ok(Value::Array(items));
     }
+    if obj.is_instance_of::<PyTuple>() {
+        let t = obj.cast_exact::<PyTuple>()?;
+        let mut items = Vec::with_capacity(t.len());
+        for item in t.iter() {
+            items.push(py_to_value(&item, sort_keys)?);
+        }
+        return Ok(Value::Array(items));
+    }
     Err(SurpTypeError::new_err(format!(
         "cannot convert {} to Surp value",
         obj.get_type().name()?
@@ -173,6 +192,289 @@ fn parse_compression(comp: Option<&str>) -> PyResult<CompressionType> {
             "unknown compression: {other} (expected none, lz4, zstd, snappy)"
         ))),
     }
+}
+
+// ---------------------------------------------------------------------------
+// RFC-001 conversion helpers
+// ---------------------------------------------------------------------------
+
+fn rfc_scalar_to_py<'py>(py: Python<'py>, scalar: &rfc001::Scalar) -> PyResult<Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    dict.set_item("kind", "scalar")?;
+    match scalar {
+        rfc001::Scalar::Null => {
+            dict.set_item("type", "null")?;
+            dict.set_item("value", py.None())?;
+        }
+        rfc001::Scalar::Unit => {
+            dict.set_item("type", "unit")?;
+            dict.set_item("value", py.None())?;
+        }
+        rfc001::Scalar::Bool(value) => {
+            dict.set_item("type", "bool")?;
+            dict.set_item("value", value)?;
+        }
+        rfc001::Scalar::I64(value) => {
+            dict.set_item("type", "i64")?;
+            dict.set_item("value", value)?;
+        }
+        rfc001::Scalar::U64(value) => {
+            dict.set_item("type", "u64")?;
+            dict.set_item("value", value)?;
+        }
+        rfc001::Scalar::Vi64(value) => {
+            dict.set_item("type", "vi64")?;
+            dict.set_item("value", value)?;
+        }
+        rfc001::Scalar::Vu64(value) => {
+            dict.set_item("type", "vu64")?;
+            dict.set_item("value", value)?;
+        }
+        rfc001::Scalar::F32(value) => {
+            dict.set_item("type", "f32")?;
+            dict.set_item("value", value)?;
+        }
+        rfc001::Scalar::F64(value) => {
+            dict.set_item("type", "f64")?;
+            dict.set_item("value", value)?;
+        }
+        rfc001::Scalar::Str(value) => {
+            dict.set_item("type", "str")?;
+            dict.set_item("value", value)?;
+        }
+        rfc001::Scalar::Bytes(value) => {
+            dict.set_item("type", "bytes")?;
+            dict.set_item("value", PyBytes::new(py, value))?;
+        }
+        rfc001::Scalar::Sym(value) => {
+            dict.set_item("type", "sym")?;
+            dict.set_item("value", value)?;
+        }
+        rfc001::Scalar::Tagged { tag, value } => {
+            dict.set_item("type", "tagged")?;
+            dict.set_item("tag", tag)?;
+            dict.set_item("value", value)?;
+        }
+    }
+    Ok(dict)
+}
+
+fn rfc_annotation_to_py<'py>(
+    py: Python<'py>,
+    annotation: &rfc001::Annotation,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    dict.set_item("name", &annotation.name)?;
+    match &annotation.value {
+        Some(value) => dict.set_item("value", rfc_scalar_to_py(py, value)?)?,
+        None => dict.set_item("value", py.None())?,
+    }
+    Ok(dict)
+}
+
+fn rfc_value_to_py<'py>(py: Python<'py>, value: &rfc001::Value) -> PyResult<Bound<'py, PyAny>> {
+    match value {
+        rfc001::Value::Scalar(scalar) => Ok(rfc_scalar_to_py(py, scalar)?.into_any()),
+        rfc001::Value::Product(product) => {
+            let dict = PyDict::new(py);
+            dict.set_item("kind", "product")?;
+            dict.set_item("type_name", &product.type_name)?;
+            let fields = PyList::empty(py);
+            for field in &product.fields {
+                let item = PyDict::new(py);
+                item.set_item("name", &field.name)?;
+                item.set_item("value", rfc_value_to_py(py, &field.value)?)?;
+                fields.append(item)?;
+            }
+            dict.set_item("fields", fields)?;
+            Ok(dict.into_any())
+        }
+        rfc001::Value::Sum(sum) => {
+            let dict = PyDict::new(py);
+            dict.set_item("kind", "sum")?;
+            dict.set_item("type_name", &sum.type_name)?;
+            dict.set_item("variant", &sum.variant)?;
+            let payload = PyDict::new(py);
+            match &sum.payload {
+                rfc001::SumPayload::Unit => {
+                    payload.set_item("kind", "unit")?;
+                }
+                rfc001::SumPayload::Tuple(items) => {
+                    payload.set_item("kind", "tuple")?;
+                    let py_items = PyList::empty(py);
+                    for item in items {
+                        py_items.append(rfc_value_to_py(py, item)?)?;
+                    }
+                    payload.set_item("items", py_items)?;
+                }
+                rfc001::SumPayload::Struct(fields) => {
+                    payload.set_item("kind", "struct")?;
+                    let py_fields = PyList::empty(py);
+                    for field in fields {
+                        let py_field = PyDict::new(py);
+                        py_field.set_item("name", &field.name)?;
+                        py_field.set_item("value", rfc_value_to_py(py, &field.value)?)?;
+                        py_fields.append(py_field)?;
+                    }
+                    payload.set_item("fields", py_fields)?;
+                }
+            }
+            dict.set_item("payload", payload)?;
+            Ok(dict.into_any())
+        }
+        rfc001::Value::Sequence(sequence) => {
+            let dict = PyDict::new(py);
+            dict.set_item("kind", "sequence")?;
+            dict.set_item("elem_type", &sequence.elem_type)?;
+            let items = PyList::empty(py);
+            for item in &sequence.items {
+                items.append(rfc_value_to_py(py, item)?)?;
+            }
+            dict.set_item("items", items)?;
+            Ok(dict.into_any())
+        }
+        rfc001::Value::Association(pairs) => {
+            let dict = PyDict::new(py);
+            dict.set_item("kind", "association")?;
+            let py_pairs = PyList::empty(py);
+            for (key, value) in pairs {
+                let pair = PyList::empty(py);
+                pair.append(rfc_value_to_py(py, key)?)?;
+                pair.append(rfc_value_to_py(py, value)?)?;
+                py_pairs.append(pair)?;
+            }
+            dict.set_item("pairs", py_pairs)?;
+            Ok(dict.into_any())
+        }
+        rfc001::Value::Reference(reference) => {
+            let dict = PyDict::new(py);
+            dict.set_item("kind", "reference")?;
+            match reference {
+                rfc001::Reference::Binding(name) => {
+                    dict.set_item("reference_kind", "binding")?;
+                    dict.set_item("name", name)?;
+                }
+                rfc001::Reference::ById(inner) => {
+                    dict.set_item("reference_kind", "by_id")?;
+                    dict.set_item("value", rfc_value_to_py(py, inner)?)?;
+                }
+            }
+            Ok(dict.into_any())
+        }
+        rfc001::Value::Tensor(tensor) => {
+            let dict = PyDict::new(py);
+            dict.set_item("kind", "tensor")?;
+            dict.set_item("element_type", &tensor.element_type)?;
+            let shape = PyList::empty(py);
+            for dim in &tensor.shape {
+                match dim {
+                    Some(value) => shape.append(value)?,
+                    None => shape.append(py.None())?,
+                }
+            }
+            dict.set_item("shape", shape)?;
+
+            let annotations = PyList::empty(py);
+            for annotation in &tensor.annotations {
+                annotations.append(rfc_annotation_to_py(py, annotation)?)?;
+            }
+            dict.set_item("annotations", annotations)?;
+
+            let data = PyDict::new(py);
+            match &tensor.data {
+                rfc001::TensorData::DenseF64(values) => {
+                    data.set_item("kind", "dense_f64")?;
+                    data.set_item("values", values)?;
+                }
+                rfc001::TensorData::DenseI64(values) => {
+                    data.set_item("kind", "dense_i64")?;
+                    data.set_item("values", values)?;
+                }
+                rfc001::TensorData::DenseU64(values) => {
+                    data.set_item("kind", "dense_u64")?;
+                    data.set_item("values", values)?;
+                }
+                rfc001::TensorData::BinaryBlob(bytes) => {
+                    data.set_item("kind", "binary_blob")?;
+                    data.set_item("bytes", PyBytes::new(py, bytes))?;
+                }
+            }
+            dict.set_item("data", data)?;
+            Ok(dict.into_any())
+        }
+        rfc001::Value::Stream(stream) => {
+            let dict = PyDict::new(py);
+            dict.set_item("kind", "stream")?;
+            dict.set_item("item_type", &stream.item_type)?;
+            let annotations = PyList::empty(py);
+            for annotation in &stream.annotations {
+                annotations.append(rfc_annotation_to_py(py, annotation)?)?;
+            }
+            dict.set_item("annotations", annotations)?;
+            Ok(dict.into_any())
+        }
+        rfc001::Value::Opaque(opaque) => {
+            let dict = PyDict::new(py);
+            dict.set_item("kind", "opaque")?;
+            dict.set_item("type_tag", &opaque.type_tag)?;
+            dict.set_item("bytes", PyBytes::new(py, &opaque.bytes))?;
+            Ok(dict.into_any())
+        }
+    }
+}
+
+fn rfc_document_to_py<'py>(
+    py: Python<'py>,
+    document: &rfc001::Document,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+
+    let annotations = PyList::empty(py);
+    for annotation in &document.annotations {
+        annotations.append(rfc_annotation_to_py(py, annotation)?)?;
+    }
+    dict.set_item("annotations", annotations)?;
+
+    dict.set_item("uses", &document.uses)?;
+
+    let bindings = PyList::empty(py);
+    for binding in &document.bindings {
+        let item = PyDict::new(py);
+        item.set_item("name", &binding.name)?;
+        item.set_item("value", rfc_value_to_py(py, &binding.value)?)?;
+        bindings.append(item)?;
+    }
+    dict.set_item("bindings", bindings)?;
+
+    match &document.root {
+        Some(root) => dict.set_item("root", rfc_value_to_py(py, root)?)?,
+        None => dict.set_item("root", py.None())?,
+    }
+
+    Ok(dict)
+}
+
+fn rfc_header_to_py<'py>(
+    py: Python<'py>,
+    header: &rfc001::CbfHeader,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    dict.set_item("magic", "SURP")?;
+    dict.set_item("cbf_version", header.cbf_version)?;
+    dict.set_item("ctn_version", header.ctn_version)?;
+    dict.set_item("flags", header.flags)?;
+    dict.set_item("alignment", header.alignment)?;
+    dict.set_item(
+        "schema_hash_prefix",
+        PyBytes::new(py, &header.schema_hash_prefix),
+    )?;
+    dict.set_item("root_offset", header.root_offset)?;
+    dict.set_item("symtab_offset", header.symtab_offset)?;
+    dict.set_item("index_offset", header.index_offset)?;
+    dict.set_item("self_describing", header.self_describing())?;
+    dict.set_item("has_symtab", header.has_symtab())?;
+    dict.set_item("has_index", header.has_index())?;
+    Ok(dict)
 }
 
 // ---------------------------------------------------------------------------
@@ -422,12 +724,12 @@ fn decode<'py>(py: Python<'py>, data: &Bound<'py, PyBytes>) -> PyResult<Bound<'p
 ///     SurpEncodeError: If encoding fails.
 ///     OSError: If writing to the file fails.
 #[pyfunction]
-fn encode_to_file(obj: &Bound<'_, PyAny>, path: &str) -> PyResult<()> {
+fn encode_to_file(obj: &Bound<'_, PyAny>, path: PathBuf) -> PyResult<()> {
     let value = py_to_value(obj, false)?;
     let mut encoder = CoreEncoder::new();
     encoder.encode_value(&value).map_err(map_encode_error)?;
     let bytes = encoder.finish().map_err(map_encode_error)?;
-    fs::write(PathBuf::from(path), &bytes)?;
+    fs::write(path, &bytes)?;
     Ok(())
 }
 
@@ -443,8 +745,8 @@ fn encode_to_file(obj: &Bound<'_, PyAny>, path: &str) -> PyResult<()> {
 ///     SurpDecodeError: If decoding fails.
 ///     OSError: If reading the file fails.
 #[pyfunction]
-fn decode_from_file<'py>(py: Python<'py>, path: &str) -> PyResult<Bound<'py, PyAny>> {
-    let buf = fs::read(PathBuf::from(path))?;
+fn decode_from_file<'py>(py: Python<'py>, path: PathBuf) -> PyResult<Bound<'py, PyAny>> {
+    let buf = fs::read(path)?;
     let mut decoder = CoreDecoder::new(&buf);
     let values = decoder.decode_all_owned().map_err(map_decode_error)?;
 
@@ -492,6 +794,116 @@ fn parse_text<'py>(py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyAny>> {
 fn pretty_print(obj: &Bound<'_, PyAny>, indent: usize) -> PyResult<String> {
     let value = py_to_value(obj, false)?;
     Ok(surp_core::text::pretty_print(&value, indent))
+}
+
+// ---------------------------------------------------------------------------
+// RFC-001 API (CTN + CBF + CQL)
+// ---------------------------------------------------------------------------
+
+/// Parse an RFC-001 CTN document into a typed Python dictionary.
+#[pyfunction]
+fn rfc_parse_ctn<'py>(py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyDict>> {
+    let document = rfc001::parse_document(text).map_err(map_rfc_error)?;
+    rfc_document_to_py(py, &document)
+}
+
+/// Parse and format an RFC-001 CTN document.
+#[pyfunction]
+fn rfc_format_ctn(text: &str) -> PyResult<String> {
+    let document = rfc001::parse_document(text).map_err(map_rfc_error)?;
+    Ok(rfc001::format_document(&document))
+}
+
+/// Compile RFC-001 CTN text to CBF bytes.
+#[pyfunction]
+#[pyo3(signature = (text, *, with_symtab=true, alignment=0))]
+fn rfc_compile_ctn<'py>(
+    py: Python<'py>,
+    text: &str,
+    with_symtab: bool,
+    alignment: u8,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let document = rfc001::parse_document(text).map_err(map_rfc_error)?;
+    let bytes = rfc001::encode_document(
+        &document,
+        rfc001::EncodeOptions {
+            with_symtab,
+            alignment,
+        },
+    )
+    .map_err(map_rfc_error)?;
+    Ok(PyBytes::new(py, &bytes))
+}
+
+/// Decode RFC-001 CBF bytes and return header, symbols, document, and CTN.
+#[pyfunction]
+fn rfc_decode_cbf<'py>(
+    py: Python<'py>,
+    data: &Bound<'py, PyBytes>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let decoded = rfc001::decode_document(data.as_bytes()).map_err(map_rfc_error)?;
+    let dict = PyDict::new(py);
+    dict.set_item("header", rfc_header_to_py(py, &decoded.header)?)?;
+    dict.set_item("symbols", decoded.symbols)?;
+    dict.set_item("document", rfc_document_to_py(py, &decoded.document)?)?;
+    dict.set_item("ctn", rfc001::format_document(&decoded.document))?;
+    Ok(dict)
+}
+
+/// Decode RFC-001 CBF bytes to CTN text.
+#[pyfunction]
+fn rfc_cbf_to_ctn(data: &Bound<'_, PyBytes>) -> PyResult<String> {
+    let decoded = rfc001::decode_document(data.as_bytes()).map_err(map_rfc_error)?;
+    Ok(rfc001::format_document(&decoded.document))
+}
+
+/// Execute a baseline RFC-001 CQL path query over CBF bytes.
+#[pyfunction]
+#[pyo3(signature = (data, query, *, as_ctn=false))]
+fn rfc_query_cbf<'py>(
+    py: Python<'py>,
+    data: &Bound<'py, PyBytes>,
+    query: &str,
+    as_ctn: bool,
+) -> PyResult<Bound<'py, PyList>> {
+    let decoded = rfc001::decode_document(data.as_bytes()).map_err(map_rfc_error)?;
+    let root = decoded.document.effective_root().map_err(map_rfc_error)?;
+    let results = rfc001::query(&root, query).map_err(map_rfc_error)?;
+    rfc_results_to_py(py, &results, as_ctn)
+}
+
+/// Execute a baseline RFC-001 CQL path query over CTN text.
+#[pyfunction]
+#[pyo3(signature = (text, query, *, as_ctn=false))]
+fn rfc_query_ctn<'py>(
+    py: Python<'py>,
+    text: &str,
+    query: &str,
+    as_ctn: bool,
+) -> PyResult<Bound<'py, PyList>> {
+    let document = rfc001::parse_document(text).map_err(map_rfc_error)?;
+    let bytes = rfc001::encode_document(&document, rfc001::EncodeOptions::default())
+        .map_err(map_rfc_error)?;
+    let decoded = rfc001::decode_document(&bytes).map_err(map_rfc_error)?;
+    let root = decoded.document.effective_root().map_err(map_rfc_error)?;
+    let results = rfc001::query(&root, query).map_err(map_rfc_error)?;
+    rfc_results_to_py(py, &results, as_ctn)
+}
+
+fn rfc_results_to_py<'py>(
+    py: Python<'py>,
+    results: &[rfc001::Value],
+    as_ctn: bool,
+) -> PyResult<Bound<'py, PyList>> {
+    let list = PyList::empty(py);
+    for value in results {
+        if as_ctn {
+            list.append(rfc001::format_value(value))?;
+        } else {
+            list.append(rfc_value_to_py(py, value)?)?;
+        }
+    }
+    Ok(list)
 }
 
 // ---------------------------------------------------------------------------
@@ -574,13 +986,13 @@ impl Encoder {
     /// Raises:
     ///     SurpEncodeError: If encoding fails or the encoder was already finished.
     ///     OSError: If writing to the file fails.
-    fn finish_to_file(&mut self, path: &str) -> PyResult<()> {
+    fn finish_to_file(&mut self, path: PathBuf) -> PyResult<()> {
         let enc = self
             .inner
             .take()
             .ok_or_else(|| SurpEncodeError::new_err("encoder already finished"))?;
         let bytes = enc.finish().map_err(map_encode_error)?;
-        fs::write(PathBuf::from(path), &bytes)?;
+        fs::write(path, &bytes)?;
         Ok(())
     }
 }
@@ -666,7 +1078,7 @@ impl SurpDecoder {
 ///         obj = surp.load(f)
 #[pymodule]
 fn _surp_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", "1.1.3")?;
+    m.add("__version__", "1.0.0")?;
 
     // Exception hierarchy
     m.add("SurpError", m.py().get_type::<SurpError>())?;
@@ -674,6 +1086,7 @@ fn _surp_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("SurpDecodeError", m.py().get_type::<SurpDecodeError>())?;
     m.add("SurpChecksumError", m.py().get_type::<SurpChecksumError>())?;
     m.add("SurpTypeError", m.py().get_type::<SurpTypeError>())?;
+    m.add("SurpRfcError", m.py().get_type::<SurpRfcError>())?;
 
     // JSON-like API
     m.add_function(wrap_pyfunction!(dumps, m)?)?;
@@ -690,6 +1103,17 @@ fn _surp_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Text format
     m.add_function(wrap_pyfunction!(parse_text, m)?)?;
     m.add_function(wrap_pyfunction!(pretty_print, m)?)?;
+
+    // RFC-001 CTN / CBF / CQL
+    m.add("RFC001_CBF_MAGIC", PyBytes::new(m.py(), &rfc001::CBF_MAGIC))?;
+    m.add("RFC001_CBF_HEADER_SIZE", rfc001::CBF_HEADER_SIZE)?;
+    m.add_function(wrap_pyfunction!(rfc_parse_ctn, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_format_ctn, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_compile_ctn, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_decode_cbf, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_cbf_to_ctn, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_query_cbf, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_query_ctn, m)?)?;
 
     // Classes
     m.add_class::<Encoder>()?;
