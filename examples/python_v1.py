@@ -22,6 +22,13 @@ def main() -> None:
     decoded = surp.loads(data)
     assert decoded == PAYLOAD
 
+    view = surp.loads_value(data)
+    assert isinstance(view, surp.SurpValue)
+    assert view.kind == "object"
+    assert view["name"].value == "Alice"
+    assert view["tags"][1].value == "ops"
+    assert view.as_python() == PAYLOAD
+
     text = surp.pretty_print(decoded, indent=2)
     reparsed = surp.parse_text(text)
     assert reparsed == PAYLOAD

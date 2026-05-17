@@ -15,6 +15,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [1.0.1] - 2026-05-17 (pre-release)
+
+This is a pre-release changelog entry for validation and packaging review. No
+release tag or GitHub release has been created for this version.
+
+### Added
+
+- Added Rust v1 introspection helpers on `Value` and `SurpValue<'_>` for
+  JSON-like object and array access: `get`, `get_index`, `contains_key`,
+  `keys`, `values`, `items`/`entries`, container predicates, and length checks.
+- Added RFC-001 AST introspection helpers for documents, products, sums,
+  sequences, tensors, tensor data, streams, and RFC values.
+- Added native-backed Python view/model APIs for discoverable attribute access:
+  `SurpValue`, `to_value`, `loads_value`, and `parse_text_value`.
+- Added native-backed Python RFC-001 model APIs:
+  `RfcAnnotation`, `RfcField`, `RfcBinding`, `RfcHeader`, `RfcDocument`,
+  `RfcDecodedCbf`, `RfcValue`, `parse_ctn_model`, `decode_cbf_model`,
+  `query_cbf_model`, and `query_ctn_model`.
+- Added a private `_surp_native.pyi` stub so Pyright and other type checkers can
+  resolve the compiled extension module through the public facade.
+
+### Changed
+
+- Expanded Python `.pyi` stubs and shared typed dictionaries to describe the new
+  v1 and RFC-001 introspection surfaces.
+- Updated Python and Rust docs plus examples to show model/view access while
+  keeping the existing dictionary and built-in Python value APIs documented.
+- Updated Python packaging metadata to ship package-local README and license
+  files directly with wheels and sdists.
+
+### Fixed
+
+- Fixed Pyright analysis of `surp`, `surp.exceptions`, and `surp.rfc001` by
+  providing a typed private stub for the native extension import.
+- Fixed RFC-001 query overload stubs so `as_ctn=True` and `as_ctn=False` are
+  distinguishable to type checkers.
+
 ## [1.0.0] - 2026-05-17
 
 ### Added

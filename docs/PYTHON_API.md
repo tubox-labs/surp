@@ -88,6 +88,9 @@ with the matching Rust feature.
 | `decode_from_file(path) -> Any` | Path-based decode helper. |
 | `parse_text(text) -> Any` | Parse v1 Surp text notation into Python values. |
 | `pretty_print(obj, indent=2) -> str` | Render Python values as v1 Surp text notation. |
+| `to_value(obj, *, sort_keys=False) -> SurpValue` | Convert a Python value into a native-backed typed view. |
+| `loads_value(data, *, strict=True, max_depth=128) -> SurpValue | list[SurpValue]` | Decode v1 bytes into native-backed typed views without changing `loads()`. |
+| `parse_text_value(text) -> SurpValue` | Parse v1 text notation into a native-backed typed view. |
 
 ### File-Like API
 
@@ -140,6 +143,31 @@ encoder is finished, subsequent `encode()` or `finish()` calls raise
 `SurpEncodeError`. `SurpDecoder.decode_all()` is also one-shot and raises
 `SurpDecodeError` if called again.
 
+## v1 Introspection API
+
+`loads()`, `load()`, `decode()`, and `parse_text()` still return ordinary Python
+values for compatibility. For object-style introspection and IDE-visible
+attributes, use the additive native-backed `SurpValue` APIs:
+
+```python
+view = surp.loads_value(surp.dumps({"name": "Alice", "tags": ["admin", "ops"]}))
+
+assert view.kind == "object"
+assert view.is_object is True
+assert view.keys() == ["name", "tags"]
+assert view["name"].kind == "str"
+assert view["name"].value == "Alice"
+assert view["tags"][1].value == "ops"
+assert view.as_python() == {"name": "Alice", "tags": ["admin", "ops"]}
+```
+
+`SurpValue` exposes:
+
+- `kind`, `value`, `is_null`, `is_scalar`, `is_array`, and `is_object`
+- `__getitem__`, `get()`, `keys()`, `values()`, `items()`, `len()`, and
+  membership checks for object keys
+- `as_python()` to return the compatibility Python representation
+
 ## Exceptions
 
 | Exception | Base | Raised for |
@@ -185,6 +213,10 @@ assert rfc001.query_cbf(cbf, ".tags[-1]", as_ctn=True) == ['"ops"']
 | `cbf_to_ctn(data) -> str` | Decode CBF and return only CTN text. |
 | `query_cbf(data, query, *, as_ctn=False) -> list[Any]` | Run baseline CQL over CBF. |
 | `query_ctn(text, query, *, as_ctn=False) -> list[Any]` | Compile/decode CTN and run baseline CQL. |
+| `parse_ctn_model(text) -> RfcDocument` | Parse CTN into a native-backed document model. |
+| `decode_cbf_model(data) -> RfcDecodedCbf` | Decode CBF into native-backed header/document/value models. |
+| `query_cbf_model(data, query) -> list[RfcValue]` | Run CQL over CBF and return native-backed values. |
+| `query_ctn_model(text, query) -> list[RfcValue]` | Run CQL over CTN and return native-backed values. |
 
 Constants:
 
@@ -258,6 +290,34 @@ Tensor:
 ```
 
 CBF decoding validates the RFC-001 CRC64 trailer before returning data.
+
+### Native RFC Models
+
+The dictionary-returning RFC helpers remain unchanged. The model helpers expose
+the same Rust RFC-001 data model through typed Python attributes:
+
+```python
+doc = rfc001.parse_ctn_model(ctn)
+assert doc.annotation_names() == ["surp", "encoding"]
+assert doc.binding_names() == ["alice"]
+
+alice = doc.binding("alice").value
+assert alice.kind == "product"
+assert alice.type_name == "User"
+assert alice.keys() == ["id", "name", "role", "tags", "settings", "matrix"]
+assert alice["name"].scalar_type == "str"
+assert alice["name"].scalar_value == "Alice"
+assert alice["tags"][1].scalar_value == "ops"
+
+decoded = rfc001.decode_cbf_model(cbf)
+assert decoded.header.magic == "SURP"
+assert decoded.document.effective_root()["name"].scalar_value == "Alice"
+```
+
+Model classes exported from `surp.rfc001` are `RfcAnnotation`, `RfcField`,
+`RfcBinding`, `RfcHeader`, `RfcDocument`, `RfcDecodedCbf`, and `RfcValue`.
+Each model has `to_dict()` where a compatibility dictionary is meaningful;
+`RfcDocument` and `RfcValue` also expose `to_ctn()`.
 
 ## Examples
 
