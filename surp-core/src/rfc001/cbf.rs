@@ -157,6 +157,12 @@ impl CbfHeader {
     }
 }
 
+impl Default for CbfHeader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct EncodeOptions {
     /// Build and emit a symbol table for symbol literals and field names.

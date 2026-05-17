@@ -2,7 +2,7 @@
 """
 Surp Python Benchmark Harness
 
-Measures encode/decode throughput for the Python surp implementation
+Measures encode/decode throughput for the native Python surp package
 and compares against stdlib json and msgpack (if available).
 
 Usage:
@@ -19,9 +19,6 @@ import statistics
 import sys
 import time
 from pathlib import Path
-
-# Ensure the python package is importable
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "python"))
 
 import surp  # noqa: E402
 
