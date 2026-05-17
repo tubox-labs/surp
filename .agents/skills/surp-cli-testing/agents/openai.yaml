@@ -1,0 +1,4 @@
+interface:
+  display_name: "Surp CLI Testing"
+  short_description: "Verify Surp CLI interop and release tests"
+  default_prompt: "Use $surp-cli-testing to run Surp CLI, interop, benchmark, fuzz, or release verification workflows."

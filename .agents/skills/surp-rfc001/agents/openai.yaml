@@ -1,0 +1,4 @@
+interface:
+  display_name: "Surp RFC-001"
+  short_description: "Work on Surp CTN CBF and CQL"
+  default_prompt: "Use $surp-rfc001 to inspect or change Surp RFC-001 CTN, CBF, or CQL behavior."
