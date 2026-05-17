@@ -11,7 +11,7 @@ from os import PathLike
 from typing import Any, BinaryIO, Literal, Union
 
 __version__: str
-"""Package version string (e.g. ``'1.2.0'``)."""
+"""Package version string (e.g. ``'1.1.3'``)."""
 
 # ---------------------------------------------------------------------------
 # Exception Hierarchy
