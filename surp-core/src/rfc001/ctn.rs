@@ -1456,6 +1456,10 @@ fn render_value(value: &Value, indent: usize) -> String {
         Value::Association(map) => {
             let mut out = String::new();
             out.push_str("map<any, any>");
+            if map.is_empty() {
+                out.push_str(" []");
+                return out;
+            }
             for (key, value) in map {
                 out.push('\n');
                 out.push_str(&child_pad);
@@ -1726,6 +1730,16 @@ let alice = User
             panic!("expected map association");
         };
         assert_eq!(pairs.len(), 2);
+    }
+
+    #[test]
+    fn empty_map_format_is_parseable_and_idempotent() {
+        let value = parse_value("map<str, str> []").unwrap();
+        let text = format_value(&value);
+        assert_eq!(text, "map<any, any> []");
+        let reparsed = parse_value(&text).unwrap();
+        assert_eq!(value, reparsed);
+        assert_eq!(format_value(&reparsed), text);
     }
 
     #[test]
