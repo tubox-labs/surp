@@ -63,9 +63,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy README for maturin
-        run: cp README.md surp-python/README.md
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -102,9 +99,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy README for maturin
-        run: cp README.md surp-python/README.md
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -132,10 +126,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy README for maturin
-        run: copy README.md surp-python\README.md
-        shell: cmd
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -162,9 +152,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Copy README for maturin
-        run: cp README.md surp-python/README.md
 
       - name: Build sdist
         uses: PyO3/maturin-action@v1
