@@ -108,6 +108,89 @@ impl Value {
             _ => None,
         }
     }
+
+    /// Try to get as a raw byte slice.
+    pub fn as_bytes(&self) -> Option<&[u8]> {
+        match self {
+            Value::Bytes(b) => Some(b),
+            _ => None,
+        }
+    }
+
+    /// Return the logical item count for arrays and objects.
+    ///
+    /// Scalars report `0`, mirroring JSON-style container introspection without
+    /// changing scalar semantics.
+    pub fn len(&self) -> usize {
+        match self {
+            Value::Array(items) => items.len(),
+            Value::Object(entries) => entries.len(),
+            _ => 0,
+        }
+    }
+
+    /// Return true when an array or object has no entries, or when this is a scalar.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Return true if this value is an array.
+    pub fn is_array(&self) -> bool {
+        matches!(self, Value::Array(_))
+    }
+
+    /// Return true if this value is an object.
+    pub fn is_object(&self) -> bool {
+        matches!(self, Value::Object(_))
+    }
+
+    /// Return true if this value is a scalar value.
+    pub fn is_scalar(&self) -> bool {
+        !matches!(self, Value::Array(_) | Value::Object(_))
+    }
+
+    /// Look up an object field by key, preserving the first matching entry.
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        match self {
+            Value::Object(entries) => entries.iter().find(|(k, _)| k == key).map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
+    /// Return true if this object contains `key`.
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.get(key).is_some()
+    }
+
+    /// Look up an array item by index.
+    pub fn get_index(&self, index: usize) -> Option<&Value> {
+        match self {
+            Value::Array(items) => items.get(index),
+            _ => None,
+        }
+    }
+
+    /// Return object keys in encoded/insertion order.
+    pub fn keys(&self) -> Vec<&str> {
+        match self {
+            Value::Object(entries) => entries.iter().map(|(k, _)| k.as_str()).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Return array items or object values in encoded/insertion order.
+    pub fn values(&self) -> Vec<&Value> {
+        match self {
+            Value::Array(items) => items.iter().collect(),
+            Value::Object(entries) => entries.iter().map(|(_, v)| v).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Return object entries in encoded/insertion order.
+    pub fn entries(&self) -> Option<&[(String, Value)]> {
+        self.as_object()
+    }
 }
 
 impl fmt::Display for Value {
@@ -191,6 +274,157 @@ impl<'a> SurpValue<'a> {
                     .map(|(k, v)| ((*k).to_string(), v.to_owned_value()))
                     .collect(),
             ),
+        }
+    }
+
+    /// Returns the type name as a human-readable string.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            SurpValue::Null => "null",
+            SurpValue::Bool(_) => "bool",
+            SurpValue::UInt(_) => "uint",
+            SurpValue::Int(_) => "int",
+            SurpValue::Float(_) => "float",
+            SurpValue::Str(_) => "str",
+            SurpValue::Bytes(_) => "bytes",
+            SurpValue::Array(_) => "array",
+            SurpValue::Object(_) => "object",
+        }
+    }
+
+    /// Returns true if this value is null.
+    pub fn is_null(&self) -> bool {
+        matches!(self, SurpValue::Null)
+    }
+
+    /// Return true if this value is an array.
+    pub fn is_array(&self) -> bool {
+        matches!(self, SurpValue::Array(_))
+    }
+
+    /// Return true if this value is an object.
+    pub fn is_object(&self) -> bool {
+        matches!(self, SurpValue::Object(_))
+    }
+
+    /// Return true if this value is a scalar value.
+    pub fn is_scalar(&self) -> bool {
+        !matches!(self, SurpValue::Array(_) | SurpValue::Object(_))
+    }
+
+    /// Try to get as a string slice.
+    pub fn as_str(&self) -> Option<&'a str> {
+        match self {
+            SurpValue::Str(s) => Some(*s),
+            _ => None,
+        }
+    }
+
+    /// Try to get as a raw byte slice.
+    pub fn as_bytes(&self) -> Option<&'a [u8]> {
+        match self {
+            SurpValue::Bytes(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// Try to get as u64.
+    pub fn as_uint(&self) -> Option<u64> {
+        match self {
+            SurpValue::UInt(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    /// Try to get as i64.
+    pub fn as_int(&self) -> Option<i64> {
+        match self {
+            SurpValue::Int(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    /// Try to get as f64.
+    pub fn as_float(&self) -> Option<f64> {
+        match self {
+            SurpValue::Float(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    /// Try to get as a boolean.
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            SurpValue::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// Return the logical item count for arrays and objects.
+    pub fn len(&self) -> usize {
+        match self {
+            SurpValue::Array(items) => items.len(),
+            SurpValue::Object(entries) => entries.len(),
+            _ => 0,
+        }
+    }
+
+    /// Return true when an array or object has no entries, or when this is a scalar.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Look up an object field by key, preserving the first matching entry.
+    pub fn get(&self, key: &str) -> Option<&SurpValue<'a>> {
+        match self {
+            SurpValue::Object(entries) => entries.iter().find(|(k, _)| *k == key).map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
+    /// Return true if this object contains `key`.
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.get(key).is_some()
+    }
+
+    /// Look up an array item by index.
+    pub fn get_index(&self, index: usize) -> Option<&SurpValue<'a>> {
+        match self {
+            SurpValue::Array(items) => items.get(index),
+            _ => None,
+        }
+    }
+
+    /// Return object keys in encoded/insertion order.
+    pub fn keys(&self) -> Vec<&'a str> {
+        match self {
+            SurpValue::Object(entries) => entries.iter().map(|(k, _)| *k).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Return array items or object values in encoded/insertion order.
+    pub fn values(&self) -> Vec<&SurpValue<'a>> {
+        match self {
+            SurpValue::Array(items) => items.iter().collect(),
+            SurpValue::Object(entries) => entries.iter().map(|(_, v)| v).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Try to get as an array.
+    pub fn as_array(&self) -> Option<&[SurpValue<'a>]> {
+        match self {
+            SurpValue::Array(items) => Some(items),
+            _ => None,
+        }
+    }
+
+    /// Try to get as an object (ordered key-value pairs).
+    pub fn as_object(&self) -> Option<&[(&'a str, SurpValue<'a>)]> {
+        match self {
+            SurpValue::Object(entries) => Some(entries),
+            _ => None,
         }
     }
 }
@@ -294,5 +528,49 @@ mod tests {
             }
             _ => panic!("expected object"),
         }
+    }
+
+    #[test]
+    fn value_introspection_helpers() {
+        let value = Value::Object(vec![
+            ("name".into(), Value::Str("Alice".into())),
+            (
+                "tags".into(),
+                Value::Array(vec![Value::Str("admin".into()), Value::Str("ops".into())]),
+            ),
+        ]);
+
+        assert!(value.is_object());
+        assert_eq!(value.len(), 2);
+        assert_eq!(value.keys(), vec!["name", "tags"]);
+        assert_eq!(value.get("name").and_then(Value::as_str), Some("Alice"));
+        assert!(value.contains_key("tags"));
+
+        let tags = value.get("tags").unwrap();
+        assert!(tags.is_array());
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags.get_index(1).and_then(Value::as_str), Some("ops"));
+    }
+
+    #[test]
+    fn surp_value_introspection_helpers() {
+        let value = SurpValue::Object(vec![
+            ("name", SurpValue::Str("Alice")),
+            (
+                "tags",
+                SurpValue::Array(vec![SurpValue::Str("admin"), SurpValue::Str("ops")]),
+            ),
+        ]);
+
+        assert_eq!(value.type_name(), "object");
+        assert_eq!(value.keys(), vec!["name", "tags"]);
+        assert_eq!(value.get("name").and_then(SurpValue::as_str), Some("Alice"));
+        assert_eq!(
+            value
+                .get("tags")
+                .and_then(|tags| tags.get_index(1))
+                .and_then(SurpValue::as_str),
+            Some("ops")
+        );
     }
 }
