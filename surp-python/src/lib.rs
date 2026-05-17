@@ -11,7 +11,7 @@
 //! - Custom exception hierarchy: SurpError, SurpEncodeError, SurpDecodeError
 
 use pyo3::create_exception;
-use pyo3::exceptions::{PyException, PyValueError};
+use pyo3::exceptions::{PyException, PyIndexError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 
@@ -191,6 +191,169 @@ fn parse_compression(comp: Option<&str>) -> PyResult<CompressionType> {
         Some(other) => Err(PyValueError::new_err(format!(
             "unknown compression: {other} (expected none, lz4, zstd, snappy)"
         ))),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Native-backed v1 introspection classes
+// ---------------------------------------------------------------------------
+
+#[pyclass(name = "SurpValue", skip_from_py_object)]
+#[derive(Clone)]
+struct PySurpValue {
+    value: Value,
+}
+
+fn wrap_value(py: Python<'_>, value: Value) -> PyResult<Py<PySurpValue>> {
+    Py::new(py, PySurpValue { value })
+}
+
+fn py_key_to_index(key: &Bound<'_, PyAny>, len: usize) -> PyResult<Option<usize>> {
+    if key.is_instance_of::<PyInt>() {
+        let index: isize = key.extract()?;
+        let idx = if index < 0 {
+            len as isize + index
+        } else {
+            index
+        };
+        if idx < 0 {
+            return Ok(None);
+        }
+        return usize::try_from(idx).map(Some).map_err(|_| {
+            PyIndexError::new_err(format!("index {index} cannot be represented as usize"))
+        });
+    }
+    Ok(None)
+}
+
+#[pymethods]
+impl PySurpValue {
+    #[getter]
+    fn kind(&self) -> &'static str {
+        self.value.type_name()
+    }
+
+    #[getter]
+    fn is_null(&self) -> bool {
+        self.value.is_null()
+    }
+
+    #[getter]
+    fn is_scalar(&self) -> bool {
+        self.value.is_scalar()
+    }
+
+    #[getter]
+    fn is_array(&self) -> bool {
+        self.value.is_array()
+    }
+
+    #[getter]
+    fn is_object(&self) -> bool {
+        self.value.is_object()
+    }
+
+    #[getter]
+    fn value<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        match &self.value {
+            Value::Array(_) | Value::Object(_) => Ok(py.None().into_bound(py)),
+            _ => value_to_py(py, &self.value),
+        }
+    }
+
+    fn as_python<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        value_to_py(py, &self.value)
+    }
+
+    fn __len__(&self) -> usize {
+        self.value.len()
+    }
+
+    fn __bool__(&self) -> bool {
+        !self.value.is_null()
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        self.value.contains_key(key)
+    }
+
+    fn __getitem__(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<Py<PySurpValue>> {
+        if key.is_instance_of::<PyString>() {
+            let name: String = key.extract()?;
+            return self
+                .value
+                .get(&name)
+                .cloned()
+                .map(|value| wrap_value(py, value))
+                .transpose()?
+                .ok_or_else(|| PyKeyError::new_err(name));
+        }
+
+        if let Some(index) = py_key_to_index(key, self.value.len())? {
+            return self
+                .value
+                .get_index(index)
+                .cloned()
+                .map(|value| wrap_value(py, value))
+                .transpose()?
+                .ok_or_else(|| PyIndexError::new_err(index.to_string()));
+        }
+
+        Err(PyTypeError::new_err("SurpValue keys must be str or int"))
+    }
+
+    fn get(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<Option<Py<PySurpValue>>> {
+        if key.is_instance_of::<PyString>() {
+            let name: String = key.extract()?;
+            return self
+                .value
+                .get(&name)
+                .cloned()
+                .map(|value| wrap_value(py, value))
+                .transpose();
+        }
+
+        if let Some(index) = py_key_to_index(key, self.value.len())? {
+            return self
+                .value
+                .get_index(index)
+                .cloned()
+                .map(|value| wrap_value(py, value))
+                .transpose();
+        }
+
+        Err(PyTypeError::new_err("SurpValue keys must be str or int"))
+    }
+
+    fn keys(&self) -> Vec<String> {
+        self.value.keys().into_iter().map(str::to_string).collect()
+    }
+
+    fn values(&self, py: Python<'_>) -> PyResult<Vec<Py<PySurpValue>>> {
+        self.value
+            .values()
+            .into_iter()
+            .cloned()
+            .map(|value| wrap_value(py, value))
+            .collect()
+    }
+
+    fn items(&self, py: Python<'_>) -> PyResult<Vec<(String, Py<PySurpValue>)>> {
+        match &self.value {
+            Value::Object(entries) => entries
+                .iter()
+                .map(|(key, value)| Ok((key.clone(), wrap_value(py, value.clone())?)))
+                .collect(),
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "SurpValue(kind={:?}, value={:?})",
+            self.value.type_name(),
+            self.value
+        )
     }
 }
 
@@ -475,6 +638,558 @@ fn rfc_header_to_py<'py>(
     dict.set_item("has_symtab", header.has_symtab())?;
     dict.set_item("has_index", header.has_index())?;
     Ok(dict)
+}
+
+fn rfc_scalar_plain_to_py<'py>(
+    py: Python<'py>,
+    scalar: &rfc001::Scalar,
+) -> PyResult<Bound<'py, PyAny>> {
+    match scalar {
+        rfc001::Scalar::Null | rfc001::Scalar::Unit => Ok(py.None().into_bound(py)),
+        rfc001::Scalar::Bool(value) => Ok(value.into_pyobject(py)?.to_owned().into_any()),
+        rfc001::Scalar::I64(value) | rfc001::Scalar::Vi64(value) => {
+            Ok(value.into_pyobject(py)?.into_any())
+        }
+        rfc001::Scalar::U64(value) | rfc001::Scalar::Vu64(value) => {
+            Ok(value.into_pyobject(py)?.into_any())
+        }
+        rfc001::Scalar::F32(value) => Ok(value.into_pyobject(py)?.into_any()),
+        rfc001::Scalar::F64(value) => Ok(value.into_pyobject(py)?.into_any()),
+        rfc001::Scalar::Str(value) | rfc001::Scalar::Sym(value) => {
+            Ok(value.into_pyobject(py)?.into_any())
+        }
+        rfc001::Scalar::Bytes(value) => Ok(PyBytes::new(py, value).into_any()),
+        rfc001::Scalar::Tagged { value, .. } => Ok(value.into_pyobject(py)?.into_any()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Native-backed RFC-001 introspection classes
+// ---------------------------------------------------------------------------
+
+#[pyclass(name = "RfcAnnotation", skip_from_py_object)]
+#[derive(Clone)]
+struct PyRfcAnnotation {
+    annotation: rfc001::Annotation,
+}
+
+#[pyclass(name = "RfcField", skip_from_py_object)]
+#[derive(Clone)]
+struct PyRfcField {
+    field: rfc001::Field,
+}
+
+#[pyclass(name = "RfcBinding", skip_from_py_object)]
+#[derive(Clone)]
+struct PyRfcBinding {
+    binding: rfc001::Binding,
+}
+
+#[pyclass(name = "RfcHeader", skip_from_py_object)]
+#[derive(Clone)]
+struct PyRfcHeader {
+    header: rfc001::CbfHeader,
+}
+
+#[pyclass(name = "RfcDocument", skip_from_py_object)]
+#[derive(Clone)]
+struct PyRfcDocument {
+    document: rfc001::Document,
+}
+
+#[pyclass(name = "RfcDecodedCbf", skip_from_py_object)]
+#[derive(Clone)]
+struct PyRfcDecodedCbf {
+    header: rfc001::CbfHeader,
+    symbols: Vec<String>,
+    document: rfc001::Document,
+}
+
+#[pyclass(name = "RfcValue", skip_from_py_object)]
+#[derive(Clone)]
+struct PyRfcValue {
+    value: rfc001::Value,
+}
+
+fn wrap_rfc_value(py: Python<'_>, value: rfc001::Value) -> PyResult<Py<PyRfcValue>> {
+    Py::new(py, PyRfcValue { value })
+}
+
+#[pymethods]
+impl PyRfcAnnotation {
+    #[getter]
+    fn name(&self) -> &str {
+        &self.annotation.name
+    }
+
+    #[getter]
+    fn value<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        match &self.annotation.value {
+            Some(value) => Ok(rfc_scalar_to_py(py, value)?.into_any()),
+            None => Ok(py.None().into_bound(py)),
+        }
+    }
+
+    fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        rfc_annotation_to_py(py, &self.annotation)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("RfcAnnotation(name={:?})", self.annotation.name)
+    }
+}
+
+#[pymethods]
+impl PyRfcField {
+    #[getter]
+    fn name(&self) -> &str {
+        &self.field.name
+    }
+
+    #[getter]
+    fn value(&self, py: Python<'_>) -> PyResult<Py<PyRfcValue>> {
+        wrap_rfc_value(py, self.field.value.clone())
+    }
+
+    fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let dict = PyDict::new(py);
+        dict.set_item("name", &self.field.name)?;
+        dict.set_item("value", rfc_value_to_py(py, &self.field.value)?)?;
+        Ok(dict)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("RfcField(name={:?})", self.field.name)
+    }
+}
+
+#[pymethods]
+impl PyRfcBinding {
+    #[getter]
+    fn name(&self) -> &str {
+        &self.binding.name
+    }
+
+    #[getter]
+    fn value(&self, py: Python<'_>) -> PyResult<Py<PyRfcValue>> {
+        wrap_rfc_value(py, self.binding.value.clone())
+    }
+
+    fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let dict = PyDict::new(py);
+        dict.set_item("name", &self.binding.name)?;
+        dict.set_item("value", rfc_value_to_py(py, &self.binding.value)?)?;
+        Ok(dict)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("RfcBinding(name={:?})", self.binding.name)
+    }
+}
+
+#[pymethods]
+impl PyRfcHeader {
+    #[getter]
+    fn magic(&self) -> &'static str {
+        "SURP"
+    }
+
+    #[getter]
+    fn cbf_version(&self) -> u8 {
+        self.header.cbf_version
+    }
+
+    #[getter]
+    fn ctn_version(&self) -> u8 {
+        self.header.ctn_version
+    }
+
+    #[getter]
+    fn flags(&self) -> u8 {
+        self.header.flags
+    }
+
+    #[getter]
+    fn alignment(&self) -> u8 {
+        self.header.alignment
+    }
+
+    #[getter]
+    fn schema_hash_prefix<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new(py, &self.header.schema_hash_prefix)
+    }
+
+    #[getter]
+    fn root_offset(&self) -> u64 {
+        self.header.root_offset
+    }
+
+    #[getter]
+    fn symtab_offset(&self) -> u32 {
+        self.header.symtab_offset
+    }
+
+    #[getter]
+    fn index_offset(&self) -> u32 {
+        self.header.index_offset
+    }
+
+    #[getter]
+    fn self_describing(&self) -> bool {
+        self.header.self_describing()
+    }
+
+    #[getter]
+    fn has_symtab(&self) -> bool {
+        self.header.has_symtab()
+    }
+
+    #[getter]
+    fn has_index(&self) -> bool {
+        self.header.has_index()
+    }
+
+    fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        rfc_header_to_py(py, &self.header)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "RfcHeader(cbf_version={}, ctn_version={}, flags=0x{:02x})",
+            self.header.cbf_version, self.header.ctn_version, self.header.flags
+        )
+    }
+}
+
+#[pymethods]
+impl PyRfcDocument {
+    #[getter]
+    fn annotations(&self, py: Python<'_>) -> PyResult<Vec<Py<PyRfcAnnotation>>> {
+        self.document
+            .annotations
+            .iter()
+            .cloned()
+            .map(|annotation| Py::new(py, PyRfcAnnotation { annotation }))
+            .collect()
+    }
+
+    #[getter]
+    fn uses(&self) -> Vec<String> {
+        self.document.uses.clone()
+    }
+
+    #[getter]
+    fn bindings(&self, py: Python<'_>) -> PyResult<Vec<Py<PyRfcBinding>>> {
+        self.document
+            .bindings
+            .iter()
+            .cloned()
+            .map(|binding| Py::new(py, PyRfcBinding { binding }))
+            .collect()
+    }
+
+    #[getter]
+    fn root(&self, py: Python<'_>) -> PyResult<Option<Py<PyRfcValue>>> {
+        self.document
+            .root
+            .clone()
+            .map(|value| wrap_rfc_value(py, value))
+            .transpose()
+    }
+
+    fn effective_root(&self, py: Python<'_>) -> PyResult<Py<PyRfcValue>> {
+        let root = self.document.effective_root().map_err(map_rfc_error)?;
+        wrap_rfc_value(py, root)
+    }
+
+    fn binding_names(&self) -> Vec<String> {
+        self.document
+            .binding_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn annotation_names(&self) -> Vec<String> {
+        self.document
+            .annotation_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn binding(&self, py: Python<'_>, name: &str) -> PyResult<Option<Py<PyRfcBinding>>> {
+        self.document
+            .binding(name)
+            .cloned()
+            .map(|binding| Py::new(py, PyRfcBinding { binding }))
+            .transpose()
+    }
+
+    fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        rfc_document_to_py(py, &self.document)
+    }
+
+    fn to_ctn(&self) -> String {
+        rfc001::format_document(&self.document)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "RfcDocument(bindings={}, root={})",
+            self.document.bindings.len(),
+            self.document.root.is_some()
+        )
+    }
+}
+
+#[pymethods]
+impl PyRfcDecodedCbf {
+    #[getter]
+    fn header(&self, py: Python<'_>) -> PyResult<Py<PyRfcHeader>> {
+        Py::new(
+            py,
+            PyRfcHeader {
+                header: self.header.clone(),
+            },
+        )
+    }
+
+    #[getter]
+    fn symbols(&self) -> Vec<String> {
+        self.symbols.clone()
+    }
+
+    #[getter]
+    fn document(&self, py: Python<'_>) -> PyResult<Py<PyRfcDocument>> {
+        Py::new(
+            py,
+            PyRfcDocument {
+                document: self.document.clone(),
+            },
+        )
+    }
+
+    #[getter]
+    fn ctn(&self) -> String {
+        rfc001::format_document(&self.document)
+    }
+
+    fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let dict = PyDict::new(py);
+        dict.set_item("header", rfc_header_to_py(py, &self.header)?)?;
+        dict.set_item("symbols", &self.symbols)?;
+        dict.set_item("document", rfc_document_to_py(py, &self.document)?)?;
+        dict.set_item("ctn", rfc001::format_document(&self.document))?;
+        Ok(dict)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "RfcDecodedCbf(symbols={}, ctn_len={})",
+            self.symbols.len(),
+            rfc001::format_document(&self.document).len()
+        )
+    }
+}
+
+#[pymethods]
+impl PyRfcValue {
+    #[getter]
+    fn kind(&self) -> &'static str {
+        self.value.type_name()
+    }
+
+    #[getter]
+    fn is_scalar(&self) -> bool {
+        self.value.is_scalar()
+    }
+
+    #[getter]
+    fn is_empty(&self) -> bool {
+        self.value.is_empty()
+    }
+
+    #[getter]
+    fn type_name(&self) -> Option<String> {
+        match &self.value {
+            rfc001::Value::Product(product) => product.type_name.clone(),
+            rfc001::Value::Sum(sum) => sum.type_name.clone(),
+            _ => None,
+        }
+    }
+
+    #[getter]
+    fn scalar_type(&self) -> Option<&'static str> {
+        match &self.value {
+            rfc001::Value::Scalar(scalar) => Some(scalar.type_name()),
+            _ => None,
+        }
+    }
+
+    #[getter]
+    fn scalar_value<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        match &self.value {
+            rfc001::Value::Scalar(scalar) => rfc_scalar_plain_to_py(py, scalar),
+            _ => Ok(py.None().into_bound(py)),
+        }
+    }
+
+    #[getter]
+    fn variant(&self) -> Option<String> {
+        match &self.value {
+            rfc001::Value::Sum(sum) => Some(sum.variant.clone()),
+            _ => None,
+        }
+    }
+
+    #[getter]
+    fn payload_kind(&self) -> Option<&'static str> {
+        match &self.value {
+            rfc001::Value::Sum(sum) => Some(sum.payload_kind()),
+            _ => None,
+        }
+    }
+
+    #[getter]
+    fn elem_type(&self) -> Option<String> {
+        match &self.value {
+            rfc001::Value::Sequence(sequence) => sequence.elem_type.clone(),
+            _ => None,
+        }
+    }
+
+    #[getter]
+    fn element_type(&self) -> Option<String> {
+        match &self.value {
+            rfc001::Value::Tensor(tensor) => Some(tensor.element_type.clone()),
+            _ => None,
+        }
+    }
+
+    #[getter]
+    fn shape(&self) -> Vec<Option<u64>> {
+        match &self.value {
+            rfc001::Value::Tensor(tensor) => tensor.shape.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    #[getter]
+    fn data_kind(&self) -> Option<&'static str> {
+        match &self.value {
+            rfc001::Value::Tensor(tensor) => Some(tensor.data_kind()),
+            _ => None,
+        }
+    }
+
+    fn __len__(&self) -> usize {
+        self.value.len()
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        self.value.contains_key(key)
+    }
+
+    fn __getitem__(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<Py<PyRfcValue>> {
+        if key.is_instance_of::<PyString>() {
+            let name: String = key.extract()?;
+            return self
+                .value
+                .get(&name)
+                .cloned()
+                .map(|value| wrap_rfc_value(py, value))
+                .transpose()?
+                .ok_or_else(|| PyKeyError::new_err(name));
+        }
+
+        if let Some(index) = py_key_to_index(key, self.value.len())? {
+            return self
+                .value
+                .get_index(index)
+                .cloned()
+                .map(|value| wrap_rfc_value(py, value))
+                .transpose()?
+                .ok_or_else(|| PyIndexError::new_err(index.to_string()));
+        }
+
+        Err(PyTypeError::new_err("RfcValue keys must be str or int"))
+    }
+
+    fn get(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyRfcValue>>> {
+        if key.is_instance_of::<PyString>() {
+            let name: String = key.extract()?;
+            return self
+                .value
+                .get(&name)
+                .cloned()
+                .map(|value| wrap_rfc_value(py, value))
+                .transpose();
+        }
+
+        if let Some(index) = py_key_to_index(key, self.value.len())? {
+            return self
+                .value
+                .get_index(index)
+                .cloned()
+                .map(|value| wrap_rfc_value(py, value))
+                .transpose();
+        }
+
+        Err(PyTypeError::new_err("RfcValue keys must be str or int"))
+    }
+
+    fn keys(&self) -> Vec<String> {
+        self.value.keys().into_iter().map(str::to_string).collect()
+    }
+
+    fn values(&self, py: Python<'_>) -> PyResult<Vec<Py<PyRfcValue>>> {
+        self.value
+            .values()
+            .into_iter()
+            .cloned()
+            .map(|value| wrap_rfc_value(py, value))
+            .collect()
+    }
+
+    fn fields(&self, py: Python<'_>) -> PyResult<Vec<Py<PyRfcField>>> {
+        let fields: Vec<rfc001::Field> = match &self.value {
+            rfc001::Value::Product(product) => product.fields.clone(),
+            rfc001::Value::Sum(sum) => match &sum.payload {
+                rfc001::SumPayload::Struct(fields) => fields.clone(),
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        };
+        fields
+            .into_iter()
+            .map(|field| Py::new(py, PyRfcField { field }))
+            .collect()
+    }
+
+    fn annotations(&self, py: Python<'_>) -> PyResult<Vec<Py<PyRfcAnnotation>>> {
+        let annotations: Vec<rfc001::Annotation> = match &self.value {
+            rfc001::Value::Tensor(tensor) => tensor.annotations.clone(),
+            rfc001::Value::Stream(stream) => stream.annotations.clone(),
+            _ => Vec::new(),
+        };
+        annotations
+            .into_iter()
+            .map(|annotation| Py::new(py, PyRfcAnnotation { annotation }))
+            .collect()
+    }
+
+    fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        rfc_value_to_py(py, &self.value)
+    }
+
+    fn to_ctn(&self) -> String {
+        rfc001::format_value(&self.value)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("RfcValue(kind={:?})", self.value.type_name())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -796,6 +1511,57 @@ fn pretty_print(obj: &Bound<'_, PyAny>, indent: usize) -> PyResult<String> {
     Ok(surp_core::text::pretty_print(&value, indent))
 }
 
+/// Convert a Python object into a native-backed SurpValue view.
+#[pyfunction]
+#[pyo3(signature = (obj, *, sort_keys=false))]
+fn to_value(py: Python<'_>, obj: &Bound<'_, PyAny>, sort_keys: bool) -> PyResult<Py<PySurpValue>> {
+    let value = py_to_value(obj, sort_keys)?;
+    wrap_value(py, value)
+}
+
+/// Deserialize Surp binary data into native-backed SurpValue view objects.
+#[pyfunction]
+#[pyo3(signature = (data, *, strict=true, max_depth=128))]
+fn loads_value<'py>(
+    py: Python<'py>,
+    data: &Bound<'py, PyBytes>,
+    strict: bool,
+    max_depth: usize,
+) -> PyResult<Bound<'py, PyAny>> {
+    let buf = data.as_bytes();
+    let limits = if strict {
+        Limits {
+            max_nesting_depth: max_depth,
+            ..Limits::default()
+        }
+    } else {
+        Limits {
+            max_nesting_depth: max_depth,
+            ..Limits::unlimited()
+        }
+    };
+
+    let mut decoder = CoreDecoder::with_limits(buf, limits);
+    let values = decoder.decode_all_owned().map_err(map_decode_error)?;
+    if values.len() == 1 {
+        Ok(wrap_value(py, values[0].clone())?.into_bound(py).into_any())
+    } else {
+        let list = PyList::empty(py);
+        for value in values {
+            list.append(wrap_value(py, value)?)?;
+        }
+        Ok(list.into_any())
+    }
+}
+
+/// Parse Surp text notation into a native-backed SurpValue view.
+#[pyfunction]
+fn parse_text_value(py: Python<'_>, text: &str) -> PyResult<Py<PySurpValue>> {
+    let value = surp_core::text::parse(text)
+        .map_err(|e| PyValueError::new_err(format!("parse error: {e}")))?;
+    wrap_value(py, value)
+}
+
 // ---------------------------------------------------------------------------
 // RFC-001 API (CTN + CBF + CQL)
 // ---------------------------------------------------------------------------
@@ -888,6 +1654,61 @@ fn rfc_query_ctn<'py>(
     let root = decoded.document.effective_root().map_err(map_rfc_error)?;
     let results = rfc001::query(&root, query).map_err(map_rfc_error)?;
     rfc_results_to_py(py, &results, as_ctn)
+}
+
+/// Parse an RFC-001 CTN document into a native-backed RfcDocument model.
+#[pyfunction]
+fn rfc_parse_ctn_model(py: Python<'_>, text: &str) -> PyResult<Py<PyRfcDocument>> {
+    let document = rfc001::parse_document(text).map_err(map_rfc_error)?;
+    Py::new(py, PyRfcDocument { document })
+}
+
+/// Decode RFC-001 CBF bytes into a native-backed RfcDecodedCbf model.
+#[pyfunction]
+fn rfc_decode_cbf_model(
+    py: Python<'_>,
+    data: &Bound<'_, PyBytes>,
+) -> PyResult<Py<PyRfcDecodedCbf>> {
+    let decoded = rfc001::decode_document(data.as_bytes()).map_err(map_rfc_error)?;
+    Py::new(
+        py,
+        PyRfcDecodedCbf {
+            header: decoded.header,
+            symbols: decoded.symbols,
+            document: decoded.document,
+        },
+    )
+}
+
+/// Execute a baseline RFC-001 CQL path query over CBF bytes and return RfcValue models.
+#[pyfunction]
+fn rfc_query_cbf_model(
+    py: Python<'_>,
+    data: &Bound<'_, PyBytes>,
+    query: &str,
+) -> PyResult<Vec<Py<PyRfcValue>>> {
+    let decoded = rfc001::decode_document(data.as_bytes()).map_err(map_rfc_error)?;
+    let root = decoded.document.effective_root().map_err(map_rfc_error)?;
+    let results = rfc001::query(&root, query).map_err(map_rfc_error)?;
+    results
+        .into_iter()
+        .map(|value| wrap_rfc_value(py, value))
+        .collect()
+}
+
+/// Execute a baseline RFC-001 CQL path query over CTN text and return RfcValue models.
+#[pyfunction]
+fn rfc_query_ctn_model(py: Python<'_>, text: &str, query: &str) -> PyResult<Vec<Py<PyRfcValue>>> {
+    let document = rfc001::parse_document(text).map_err(map_rfc_error)?;
+    let bytes = rfc001::encode_document(&document, rfc001::EncodeOptions::default())
+        .map_err(map_rfc_error)?;
+    let decoded = rfc001::decode_document(&bytes).map_err(map_rfc_error)?;
+    let root = decoded.document.effective_root().map_err(map_rfc_error)?;
+    let results = rfc001::query(&root, query).map_err(map_rfc_error)?;
+    results
+        .into_iter()
+        .map(|value| wrap_rfc_value(py, value))
+        .collect()
 }
 
 fn rfc_results_to_py<'py>(
@@ -1104,6 +1925,11 @@ fn _surp_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_text, m)?)?;
     m.add_function(wrap_pyfunction!(pretty_print, m)?)?;
 
+    // Native-backed v1 introspection API
+    m.add_function(wrap_pyfunction!(to_value, m)?)?;
+    m.add_function(wrap_pyfunction!(loads_value, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_text_value, m)?)?;
+
     // RFC-001 CTN / CBF / CQL
     m.add("RFC001_CBF_MAGIC", PyBytes::new(m.py(), &rfc001::CBF_MAGIC))?;
     m.add("RFC001_CBF_HEADER_SIZE", rfc001::CBF_HEADER_SIZE)?;
@@ -1114,10 +1940,22 @@ fn _surp_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rfc_cbf_to_ctn, m)?)?;
     m.add_function(wrap_pyfunction!(rfc_query_cbf, m)?)?;
     m.add_function(wrap_pyfunction!(rfc_query_ctn, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_parse_ctn_model, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_decode_cbf_model, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_query_cbf_model, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_query_ctn_model, m)?)?;
 
     // Classes
     m.add_class::<Encoder>()?;
     m.add_class::<SurpDecoder>()?;
+    m.add_class::<PySurpValue>()?;
+    m.add_class::<PyRfcAnnotation>()?;
+    m.add_class::<PyRfcField>()?;
+    m.add_class::<PyRfcBinding>()?;
+    m.add_class::<PyRfcHeader>()?;
+    m.add_class::<PyRfcDocument>()?;
+    m.add_class::<PyRfcDecodedCbf>()?;
+    m.add_class::<PyRfcValue>()?;
 
     Ok(())
 }

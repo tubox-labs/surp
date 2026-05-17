@@ -63,6 +63,28 @@ class TestEncodeDecode:
         with pytest.raises(surp.SurpDecodeError):
             surp.decode(b"not a surp file")
 
+    def test_native_value_view_exposes_json_like_access(self):
+        payload = {"name": "Alice", "tags": ["admin", "ops"], "active": True}
+        view = surp.loads_value(surp.dumps(payload))
+
+        assert isinstance(view, surp.SurpValue)
+        assert view.kind == "object"
+        assert view.is_object is True
+        assert len(view) == 3
+        assert "tags" in view
+        assert view.keys() == ["name", "tags", "active"]
+        assert view["name"].kind == "str"
+        assert view["name"].value == "Alice"
+        assert view["tags"][1].value == "ops"
+        assert view.get("missing") is None
+        assert view.as_python() == payload
+
+    def test_parse_text_value_exposes_container_attributes(self):
+        view = surp.parse_text_value('{ name: "Alice"; tags: ["admin", "ops"]; }')
+        assert view.kind == "object"
+        assert view["tags"].is_array is True
+        assert [item.value for item in view["tags"].values()] == ["admin", "ops"]
+
 
 class TestEncoderDecoderClasses:
     def test_incremental_encoder_decoder(self):
@@ -145,6 +167,27 @@ class TestRfc001Ctn:
         with pytest.raises(surp.SurpRfcError):
             rfc001.parse_ctn("let 123bad = true")
 
+    def test_parse_ctn_model_exposes_typed_attributes(self):
+        doc = rfc001.parse_ctn_model(RFC_COMPLEX_CTN)
+        assert isinstance(doc, rfc001.RfcDocument)
+        assert doc.annotation_names() == ["surp", "encoding"]
+        assert doc.binding_names() == ["alice"]
+        assert doc.bindings[0].name == "alice"
+
+        root = doc.effective_root()
+        assert isinstance(root, rfc001.RfcValue)
+        assert root.kind == "reference"
+
+        user = doc.binding("alice").value
+        assert user.kind == "product"
+        assert user.type_name == "User"
+        assert user.keys() == ["id", "name", "role", "tags", "settings", "matrix"]
+        assert user["name"].scalar_type == "str"
+        assert user["name"].scalar_value == "Alice"
+        assert user["tags"][1].scalar_value == "ops"
+        assert user.fields()[0].name == "id"
+        assert user.to_dict()["kind"] == "product"
+
 
 class TestRfc001Cbf:
     def test_compile_and_decode_cbf_exposes_header_symbols_and_ctn(self):
@@ -184,6 +227,18 @@ class TestRfc001Cbf:
         with pytest.raises(surp.SurpRfcError):
             rfc001.compile_ctn("let a = &b\nlet b = &a\n&a")
 
+    def test_decode_cbf_model_exposes_header_document_and_values(self):
+        data = rfc001.compile_ctn(RFC_COMPLEX_CTN, alignment=6)
+        decoded = rfc001.decode_cbf_model(data)
+
+        assert isinstance(decoded, rfc001.RfcDecodedCbf)
+        assert decoded.header.magic == "SURP"
+        assert decoded.header.alignment == 6
+        assert decoded.header.has_symtab is True
+        assert "name" in decoded.symbols
+        assert decoded.document.effective_root()["name"].scalar_value == "Alice"
+        assert decoded.to_dict()["header"]["alignment"] == 6
+
 
 class TestRfc001Cql:
     def test_query_ctn_field_sequence_map_and_tensor(self):
@@ -212,3 +267,11 @@ class TestRfc001Cql:
         data = rfc001.compile_ctn('User\n  name = "Alice"')
         with pytest.raises(surp.SurpRfcError):
             rfc001.query_cbf(data, "name")
+
+    def test_query_model_returns_rfc_values(self):
+        data = rfc001.compile_ctn(RFC_COMPLEX_CTN)
+        values = rfc001.query_cbf_model(data, ".tags[]")
+        assert [value.scalar_value for value in values] == ["admin", "ops"]
+        assert [value.to_ctn() for value in rfc001.query_ctn_model(RFC_COMPLEX_CTN, ".name")] == [
+            '"Alice"'
+        ]
