@@ -116,6 +116,25 @@ crous to-json data.crous
 crous bench data.json -n 10000
 ```
 
+## RFC-001 Preview (Next-Generation Path)
+
+The repository now includes an additive RFC-001 implementation in
+`crous_core::rfc001` (CTN + CBF + baseline CQL) without breaking v1 APIs.
+
+```bash
+# Compile RFC-001 CTN -> CBF
+crous rfc-compile input.crous -o output.crb
+
+# Inspect RFC-001 CBF (and optionally print CTN)
+crous rfc-inspect output.crb --ctn
+
+# Run baseline RFC-001 CQL path query
+crous rfc-query output.crb ".user.email"
+```
+
+Implementation details and current feature coverage:
+`docs/RFC-001-IMPLEMENTATION.md`
+
 ## Derive Macro
 
 ```rust
