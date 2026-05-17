@@ -22,6 +22,12 @@ release tag or GitHub release has been created for this version.
 
 ### Added
 
+- Added `surp.model`, an RFC-001-native class schema and validation layer
+  inside the `surp` Python package. It supports declarative `SurpModel` and
+  `SurpDocument` classes, `Field(...)` descriptors, RFC-001 scalar and
+  composite type markers, symbol enums, references, streams, tensors, sums,
+  validation errors, schema inspection, CQL query helpers, and typed stub
+  generation.
 - Added Rust v1 introspection helpers on `Value` and `SurpValue<'_>` for
   JSON-like object and array access: `get`, `get_index`, `contains_key`,
   `keys`, `values`, `items`/`entries`, container predicates, and length checks.
@@ -38,8 +44,11 @@ release tag or GitHub release has been created for this version.
 
 ### Changed
 
+- Moved the RFC-001 model validation layer into the native Python distribution
+  so users import it as `from surp.model import ...`; the standalone
+  `surp-model` package layout is not shipped.
 - Expanded Python `.pyi` stubs and shared typed dictionaries to describe the new
-  v1 and RFC-001 introspection surfaces.
+  v1, RFC-001 introspection, and `surp.model` validation surfaces.
 - Updated Python and Rust docs plus examples to show model/view access while
   keeping the existing dictionary and built-in Python value APIs documented.
 - Updated Python packaging metadata to ship package-local README and license
@@ -47,6 +56,8 @@ release tag or GitHub release has been created for this version.
 
 ### Fixed
 
+- Fixed RFC-001 CTN formatting for empty maps so canonical output remains
+  parseable and `normalize_ctn()` stays idempotent for empty map fields.
 - Fixed Pyright analysis of `surp`, `surp.exceptions`, and `surp.rfc001` by
   providing a typed private stub for the native extension import.
 - Fixed RFC-001 query overload stubs so `as_ctn=True` and `as_ctn=False` are

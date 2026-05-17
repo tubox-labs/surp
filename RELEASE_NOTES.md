@@ -9,6 +9,11 @@ Surp v1.0.1 (pre-release)
 
 ## Highlights
 
+- Adds `surp.model`, an RFC-001-native Python class schema and validation layer
+  shipped inside the existing `surp` package. Users can define `SurpModel` and
+  `SurpDocument` classes with explicit RFC-001 type markers, validate eagerly,
+  encode/decode through `surp.rfc001`, query with CQL, and generate typed
+  constructor stubs.
 - Adds JSON-like Rust introspection helpers for v1 `Value` and zero-copy
   `SurpValue<'_>` without changing the v1 wire format.
 - Adds RFC-001 AST introspection helpers so products, sums, sequences, tensors,
@@ -20,9 +25,12 @@ Surp v1.0.1 (pre-release)
 - Keeps existing `dumps`, `loads`, `dump`, `load`, `parse_ctn`, `decode_cbf`,
   and query dictionary/list behavior backward compatible.
 - Expands `.pyi` stubs, including a private `_surp_native.pyi`, so mypy and
-  Pyright can resolve the public Python API and native facade.
+  Pyright can resolve the public Python API, native facade, and `surp.model`
+  validation layer.
 - Updates docs, examples, and tests for the new introspection APIs.
 - Packages the Python README and license files directly with wheels and sdists.
+- Fixes RFC-001 empty-map formatting so canonical CTN stays parseable and
+  normalization remains idempotent.
 
 ## Validation
 
