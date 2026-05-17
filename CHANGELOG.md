@@ -7,168 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Versioning Rules
 
-- **Major**: File format changes (magic, wire type semantics), breaking API changes.
-- **Minor**: New features (new wire types, new block types, new API methods), backward-compatible.
-- **Patch**: Bug fixes, performance improvements, documentation.
+- **Major**: File format changes, breaking API changes, and incompatible wire semantics.
+- **Minor**: Backward-compatible features and public API additions.
+- **Patch**: Bug fixes, performance improvements, tests, and documentation.
 
 ## [Unreleased]
 
-## [1.1.3] - 2026-05-17
+No unreleased changes.
+
+## [1.0.0] - 2026-05-17
 
 ### Added
 
-- Legacy Python package metadata under `python-crous/` for the final `crous`
-  package release. Version `1.1.3` emits the requested setup-time deprecation
-  warning and depends on `surp==1.1.3`.
-- Release notes for the renamed `surp` project and GitHub release publishing
-  under `tubox-labs/surp`.
+- First stable Surp release under the `surp` project and package name.
+- Rust workspace crates:
+  - `surp-core` for v1 binary encoding/decoding, block framing, `Value`,
+    zero-copy `SurpValue`, resource limits, checksums, text parsing, and
+    RFC-001 modules.
+  - `surp-derive` for `#[derive(Surp)]` and `#[derive(SurpSchema)]`.
+  - `surp-cli` for v1 file inspection/conversion/validation and RFC-001
+    CTN/CBF/CQL commands.
+  - `surp-io` for file/shared-buffer helpers, Tokio framed IO, and optional
+    mmap support.
+  - `surp-compression` for compressor adapters and adaptive selection.
+  - `surp-ffi` for C-compatible JSON-to-Surp and Surp-to-JSON buffers.
+  - `surp-simd` for byte scanning and batched varint helpers.
+  - `surp-python`, published as the native Python package `surp`.
+- v1 binary format support for null, booleans, unsigned and signed integers,
+  floats, strings, bytes, arrays, ordered objects, block checksums, trailer
+  checksums, optional block compression, and per-block string dictionary
+  deduplication.
+- Human-readable v1 text notation with object fields, arrays, base64 bytes,
+  comments, optional type annotations, `inf`, `-inf`, and `NaN`.
+- Native Python API:
+  - `dumps`, `loads`, `dump`, `load`
+  - `encode`, `decode`, `encode_to_file`, `decode_from_file`
+  - `parse_text`, `pretty_print`
+  - `Encoder`, `SurpDecoder`
+  - `SurpError`, `SurpEncodeError`, `SurpDecodeError`,
+    `SurpChecksumError`, `SurpTypeError`, and `SurpRfcError`
+- RFC-001 implementation under `surp_core::rfc001` with CTN parsing and
+  formatting, CBF encoding/decoding, CRC64 validation, symbol tables, product,
+  sum, sequence, map, reference, tensor, stream, and opaque/tagged value
+  support.
+- Python RFC-001 API under `surp.rfc001` for CTN parsing/normalization,
+  CTN-to-CBF compilation, CBF decoding, CBF-to-CTN formatting, and baseline
+  CQL queries.
+- CLI RFC-001 commands: `rfc-compile`, `rfc-inspect`, and `rfc-query`.
+- Comprehensive Rust, Python, CLI, and RFC-001 documentation under `docs/`.
+- Runnable examples and fixtures under `examples/` for Rust, Python, CLI, v1
+  text/binary workflows, derives, and RFC-001 CTN/CBF/CQL.
+- Regression tests for v1 roundtrips, adversarial inputs, resource limits,
+  string dictionary references, compression, text parsing, derive macros,
+  RFC-001 CTN/CBF/CQL behavior, Python native APIs, and cross-language
+  behavior.
 
 ### Changed
 
-- Renamed the project from `crous` to `surp` across crates, packages, CLI,
-  FFI symbols, workflows, benchmarks, and documentation.
-- Updated the Python package, native extension, and pure-Python module version
-  metadata to `1.1.3`.
+- Versioning is reset to `1.0.0` for the Surp project, Rust workspace crates,
+  Python package metadata, native extension metadata, benchmark crate, and
+  example package.
+- Release metadata now targets a fresh `v1.0.0` GitHub release.
 
 ### Removed
 
-- Removed the legacy standard binary header from the file format. Encoded
-  data now starts directly with the block stream header expected by the
-  standard format.
-
-### Breaking Changes
-
-- Existing `crous` imports, package names, repository URLs, and binary names
-  should migrate to `surp`.
-- Binary payloads that still include the legacy binary header are no longer the
-  standard format.
-
-## [1.1.2] - 2026-03-10
-
-### Security
-
-- **32-bit platform safety**: Added `safe_usize()` helper to validate length conversions, preventing overflow on 32-bit systems. All `as usize` casts replaced with checked conversions that return `LengthOverflow` error for values exceeding platform limits.
-- **Decompression bomb protection**: Added `max_decompression_ratio` limit (default 100:1, strict 20:1) to prevent decompression bombs. Decoder validates ratio before decompressing blocks and returns `DecompressionRatioExceeded` error for suspicious payloads.
-- **Invalid reference hardening**: Changed invalid reference handling from silent fallback (UInt) to explicit `InvalidReference` error, preventing potential data corruption or confusion from malformed string dictionary references.
-- **String length validation**: Explicit validation of string lengths against `max_string_length` limit with dedicated `StringTooLong` error type.
-- **MSRV compatibility**: Added `floor_char_boundary()` polyfill for platforms using Rust 1.85.0 (method stable since 1.91.0), ensuring UTF-8 safety on all supported platforms.
-
-### Performance
-
-- **Zero-allocation block flush**: Replaced `block_buf.clone()` with `std::mem::take()` in encoder's `flush_block()`, eliminating unnecessary allocation and copy on every block boundary (10-15% speedup for multi-block encodes).
-- **Pre-allocation support**: Added `Encoder::with_size_hint(estimated_size)` constructor for workloads with known size, reducing reallocations during encoding.
-
-### Python API
-
-- **JSON-like API**: Complete redesign of Python bindings with `dumps()`/`loads()`/`dump()`/`load()` functions matching the `json` module conventions. Supports options: `compression`, `dedup`, `sort_keys`, `strict`, `max_depth`.
-- **Exception hierarchy**: Added custom exception types for better error handling:
-  - `SurpError`: Base exception class
-  - `SurpEncodeError`: Encoding failures
-  - `SurpDecodeError`: Decoding failures (malformed data)
-  - `SurpChecksumError`: Checksum verification failures
-  - `SurpTypeError`: Type conversion errors
-- **IDE support**: Updated `_surp_native.pyi` type stubs with complete signatures for all functions, classes, and exceptions.
-
-### Added
-
-- New error types: `LengthOverflow`, `InvalidReference`, `DecompressionRatioExceeded`, `StringTooLong`
-- Security-focused test suite in `adversarial.rs`:
-  - `decompression_ratio_limit_enforcement`: Validates decompression bomb protection
-  - `string_too_long_error`: Tests string length limits
-  - `length_overflow_handling`: Validates 32-bit safe length handling
-  - `invalid_reference_zero_copy`: Tests reference validation in zero-copy path
-- Updated `reference_to_nonexistent_dict_entry` test to expect error instead of fallback behavior
-
-### Fixed
-
-- Clippy warning: `len() > 0` → `!is_empty()` in decompression check
-- Clippy `unsafe-op-in-unsafe-fn`: Added explicit unsafe block in `surp-simd` NEON intrinsics
-- Test reliability: Fixed `decompression_ratio_limit_enforcement` to use moderate compression ratio data for default limits test
-
-### Breaking Changes
-
-- **Invalid reference behavior**: Code relying on silent UInt fallback for invalid references will now receive an error. Update error handling to expect `InvalidReference` errors.
-- **Python API**: Complete rewrite of Python bindings. Old `encode()`/`decode()` functions replaced with `dumps()`/`loads()`/`dump()`/`load()`. Update import statements and function calls.
-
-## [1.1.1] - 2026-03-10
-
-### Added
-- Initial implementation of `surp-core` with encoder/decoder
-- LEB128 varint and ZigZag signed integer encoding
-- Block framing with per-block XXH64 checksums
-- `Value` (owned) and `SurpValue<'a>` (zero-copy) types
-- Human-readable text parser and pretty-printer
-- `#[derive(Surp)]` and `#[derive(SurpSchema)]` proc-macros
-- CLI tool: inspect, pretty, to-json, from-json, encode, bench
-- Compression plugin trait with no-op, zstd, snappy adapters
-- C FFI bindings with `surp_encode_buffer`, `surp_decode_buffer`, `surp_free`
-- Async Tokio adapters (FramedWriter, FramedReader)
-- Property-based tests (proptest)
-- Criterion benchmarks
-- Fuzz target for decode functions
-- GitHub Actions CI
-- Security documentation and threat model
-- Design risks and tradeoffs document
-
-### Added (Audit & Hardening)
-- **Decoder memory tracking**: cumulative allocation tracking with configurable `max_memory` limit
-- **Unknown-field skipping**: `skip_value_at()` for forward-compatible decoding
-- **String deduplication**: encoder `enable_dedup()` emits `Reference` wire types for repeated strings; decoder resolves via zero-copy `str_slices` table
-- **StringDict block format** (type 0x04): per-block string dictionary emitted before data blocks with prefix-delta compression for sorted entries; decoder transparently consumes StringDict blocks and pre-populates reference tables
-- **Prefix-delta compression**: dictionary entries sorted lexicographically; each entry stores `original_index | prefix_len | suffix_len | suffix` for compact storage of structured/hierarchical key names
-- **Owned decode path** (`decode_next_owned()` / `decode_all_owned()`): transparent decompression + dedup resolution for compressed blocks; zero-copy path rejects compressed blocks with a descriptive error
-- **Compression wired into encoder/decoder pipeline**: `flush_block()` compresses payload when configured; `read_next_block()` decompresses transparently; checksum on uncompressed data; fallback to None when compression doesn't help
-- **NEON SIMD byte scanning** (`surp-simd`): vectorized `find_byte()`, `count_byte()`, `find_non_ascii()` using aarch64 NEON intrinsics with scalar fallbacks
-- **Pure Python implementation** (`python/surp/`): full encode/decode with 8 modules, XXH64 hasher, text parser/printer, 54 tests
-- **PyO3 native extension** (`surp-python`): native Python bindings via PyO3 0.28, `encode()`/`decode()` functions + `Encoder`/`SurpDecoder` classes, dedup and compression support, 24 tests
-- **Cross-language interop**: bidirectional Rust↔Python binary format verified (native + pure Python)
-- **Expanded benchmarks**: JSON head-to-head comparison, deep nesting, numeric arrays, size report
-- **3 new fuzz targets**: `fuzz_roundtrip` (structured Value), `fuzz_text` (text parser), `fuzz_varint` (varint codec)
-- **CI improvements**: MSRV testing (1.85.0), multi-OS matrix, Python test job, cross-language interop job, all 4 fuzz targets
-
-### Fixed
-- Python XXH64: corrected `PRIME64_2` constant (`0xC2B2AE3D27D4EB4F`)
-- Python XXH64: corrected `PRIME64_4` constant (`0x85EBCA77C2B2AE63`)
-- `surp-compression`: conditional `#[cfg]` gate on `SurpError` import to eliminate unused-import warning
-
-## [1.1.0] - 2026-02-25
-
-### Added
-- **Full primitive type support**: `Surp` trait implementations for all Rust integer types (`u8`, `u16`, `u32`, `u64`, `u128`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, `isize`), `f32`, `Box<str>`, `Box<T>`, `()`, tuples up to 6 elements
-- **`SurpBytes` newtype**: dedicated type for raw binary blob encoding (`Value::Bytes`), distinct from `Vec<u8>` which encodes as `Array`
-- **Map support**: `HashMap<String, T>` and `BTreeMap<String, T>` → `Value::Object`
-- **Cross-type decode compatibility**: signed integer types accept `Value::UInt` when the value fits
-- 42 new tests for trait implementations (29 unit + 13 derive integration)
-- 6 production bugs found and fixed via fuzzing (encoder empty finish, block overflow, text Int(0) roundtrip, inf/NaN handling, StringDict OOM, char boundary panic)
-- 9 fuzz targets (4 new: string_dict, compress_corrupt, limits, dedup)
-- Miri validation: 73 core tests verified zero undefined behavior
-- PyO3 `build.rs` for plain `cargo build` compatibility
-
-### Fixed
-- `Encoder::finish()` without prior encode now produces valid file with magic header
-- `BlockReader::parse` integer overflow on malicious `block_len`
-- Text `Int(0)` roundtrip: now pretty-prints as `"-0"` to avoid reparsing as `UInt(0)`
-- Text parser handles `inf`, `-inf`, `NaN` float literals
-- StringDict `original_idx` unbounded → OOM on 9-byte malicious input (now validated)
-- StringDict `prefix_len` not char-boundary-safe → panic on corrupted data (now uses `floor_char_boundary`)
-
-## [0.1.0] - 2026-02-24
-
-Initial release.
-
----
+- Removed the legacy pure-Python package tree. Python users should install the
+  Rust-backed native `surp` package.
+- Removed legacy project/version history from the active changelog so the
+  public Surp line starts at `v1.0.0`.
 
 ## Release Checklist
 
-- [x] Update version in all `Cargo.toml` files
-- [x] Update this CHANGELOG
-- [ ] Run full test suite: `cargo test --workspace --all-features`
-- [ ] Run clippy: `cargo clippy --workspace --all-features -- -D warnings`
-- [ ] Run Python tests: `cd python && python3 -m pytest tests/ -v`
-- [ ] Run benchmarks: `cargo bench -p surp-core`
-- [ ] Run all fuzz targets (30s each)
-- [ ] Run `cargo audit`
-- [ ] Verify cross-language interop (Rust↔Python)
-- [ ] Review any new `unsafe` code
-- [ ] Tag release: `git tag v1.1.3`
-- [ ] Publish: `cargo publish -p surp-core && cargo publish -p surp-derive && ...`
+- [x] Update version metadata to `1.0.0`
+- [x] Update changelog and release notes
+- [x] Run `cargo fmt --all`
+- [x] Run `cargo test --workspace --all-features`
+- [x] Run `cargo clippy --workspace --all-features -- -D warnings`
+- [x] Run Python native tests
+- [x] Verify Rust, Python, and CLI examples
+- [ ] Push commits and tag `v1.0.0`
+- [ ] Create GitHub release with `gh`
