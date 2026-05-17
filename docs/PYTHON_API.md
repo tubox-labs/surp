@@ -1,582 +1,271 @@
-# Surp — Python API Documentation
+# Surp Python API
 
-> A compact, canonical binary serializer and human-readable alternative to JSON.
+The repository now has one Python package: `surp`. It is a native PyO3 package
+backed by the Rust `surp-core` implementation. The old pure-Python package
+under `python/` has been removed.
 
-**Version:** 1.1.0 · **Python:** ≥ 3.10 · **License:** MIT OR Apache-2.0
+## Install And Build
 
----
-
-## Table of Contents
-
-1. [Overview](#overview)
-2. [Installation](#installation)
-3. [Quick Start](#quick-start)
-4. [Pure Python API](#pure-python-api)
-   - [encode / decode](#encode--decode)
-   - [Value](#value)
-   - [Encoder](#encoder)
-   - [Decoder](#decoder)
-   - [Text Format](#text-format)
-   - [Limits](#limits)
-   - [Wire Types](#wire-types)
-   - [Varint Utilities](#varint-utilities)
-   - [Checksum Utilities](#checksum-utilities)
-   - [Errors](#errors)
-5. [Native Extension API (PyO3)](#native-extension-api-pyo3)
-   - [encode / decode](#native-encode--decode)
-   - [Encoder Class](#native-encoder-class)
-   - [SurpDecoder Class](#native-surpdecoder-class)
-6. [Interoperability](#interoperability)
-7. [Performance Notes](#performance-notes)
-
----
-
-## Overview
-
-Surp provides two Python packages:
-
-| Package | Type | Import | Description |
-|---------|------|--------|-------------|
-| `surp` | Pure Python | `import surp` | Full-featured encoder, decoder, text parser, and all utilities. Zero external dependencies for core functionality. |
-| `_surp_native` | PyO3 extension | `import _surp_native` | Rust-backed high-performance encoder/decoder. Built with `maturin`. |
-
-Both produce **wire-compatible** output — data encoded with one can be decoded by the other, and by the Rust library.
-
-## Installation
-
-### Pure Python
+From a checkout:
 
 ```bash
-cd python/
-pip install -e .
-```
-
-### Native Extension (PyO3)
-
-```bash
-cd surp-python/
-pip install maturin
+cd surp-python
 maturin develop --release
+python -m pytest tests/ -v
 ```
 
----
+Published wheels install as:
 
-## Quick Start
+```bash
+pip install surp
+```
 
-### Pure Python
+The package layout is:
+
+```text
+surp-python/
+  pyproject.toml          # publishes the Python distribution named "surp"
+  src/lib.rs              # PyO3 extension module: surp._surp_native
+  python/surp/
+    __init__.py           # public facade
+    exceptions.py         # exception re-exports
+    rfc001.py             # CTN / CBF / CQL helpers
+    __init__.pyi          # public API stubs
+    rfc001.pyi            # RFC helper stubs
+    _types.pyi            # shared TypedDict/Literal types
+    py.typed              # PEP 561 marker
+  tests/test_native.py    # native regression tests
+```
+
+`surp._surp_native` is private implementation detail. Application code should
+use `import surp` and `from surp import rfc001`.
+
+## v1 Binary API
 
 ```python
 import surp
 
-# Encode any Python object
-data = surp.encode({"name": "Alice", "age": 30, "active": True})
+payload = {
+    "name": "Alice",
+    "age": 30,
+    "active": True,
+    "avatar": b"\x01\x02\x03",
+}
 
-# Decode back to Python
-obj = surp.decode(data)
-# → {'name': 'Alice', 'age': 30, 'active': True}
+data = surp.dumps(payload, dedup=True, sort_keys=True)
+decoded = surp.loads(data)
+assert decoded == payload
 ```
 
-### Native Extension
-
-```python
-import _surp_native as cn
-
-data = cn.encode({"name": "Alice", "age": 30})
-obj = cn.decode(data)
-# → {'name': 'Alice', 'age': 30}
-```
-
----
-
-## Pure Python API
-
-### `encode` / `decode`
-
-```python
-from surp import encode, decode
-```
-
-#### `encode(obj) → bytes`
-
-Encode a Python object to Surp binary format.
-
-**Supported types:** `dict`, `list`, `tuple`, `str`, `int`, `float`, `bool`, `None`, `bytes`, `bytearray`.
-
-```python
-data = encode({"users": [{"name": "Alice"}, {"name": "Bob"}]})
-assert data[0] == 0x01  # Data block
-```
-
-#### `decode(data) → object`
-
-Decode Surp binary bytes back to a native Python object.
-
-Returns a single value if the data contains one top-level value, or a list otherwise.
-
-```python
-obj = decode(data)
-assert obj == {"users": [{"name": "Alice"}, {"name": "Bob"}]}
-```
-
----
-
-### `Value`
-
-```python
-from surp.value import Value, ValueType
-```
-
-The `Value` class provides explicit type discrimination matching the Surp wire format. This ensures lossless round-trips (e.g., `uint` vs `int`).
-
-#### Constructors
-
-| Factory | Type | Example |
-|---------|------|---------|
-| `Value.null()` | `NULL` | `Value.null()` |
-| `Value.bool_(v)` | `BOOL` | `Value.bool_(True)` |
-| `Value.uint(v)` | `UINT` | `Value.uint(42)` |
-| `Value.int_(v)` | `INT` | `Value.int_(-1)` |
-| `Value.float_(v)` | `FLOAT` | `Value.float_(3.14)` |
-| `Value.str_(v)` | `STR` | `Value.str_("hello")` |
-| `Value.bytes_(v)` | `BYTES` | `Value.bytes_(b"\x00\x01")` |
-| `Value.array(items)` | `ARRAY` | `Value.array([Value.uint(1), Value.uint(2)])` |
-| `Value.object(entries)` | `OBJECT` | `Value.object([("key", Value.str_("val"))])` |
-
-#### Conversion Methods
-
-| Method | Description |
-|--------|-------------|
-| `Value.from_python(obj)` | Convert `dict`/`list`/`str`/`int`/`float`/`bool`/`None`/`bytes` to `Value` |
-| `value.to_python()` | Convert back to native Python types |
-| `value.to_json()` | Convert to JSON-compatible Python object (bytes → base64 string) |
-| `Value.from_json(obj)` | Alias for `from_python` |
-| `value.to_json_string(pretty=False)` | Serialize to JSON string |
-
-#### Type Mapping
-
-| Python type | Surp Value | Notes |
-|-------------|-------------|-------|
-| `None` | `Null` | |
-| `bool` | `Bool` | Checked before `int` (Python `bool` subclasses `int`) |
-| `int` ≥ 0 | `UInt` | Unsigned 64-bit |
-| `int` < 0 | `Int` | Signed 64-bit (ZigZag encoded) |
-| `float` | `Float` | IEEE 754 double, 8 bytes LE |
-| `str` | `Str` | UTF-8 encoded, length-prefixed |
-| `bytes` | `Bytes` | Raw binary, length-prefixed |
-| `list`/`tuple` | `Array` | Recursive |
-| `dict` | `Object` | Preserves insertion order |
-
-#### Properties
-
-```python
-v = Value.uint(42)
-v.type   # ValueType.UINT
-v.data   # 42
-```
-
-#### Equality
-
-```python
-Value.uint(42) == Value.uint(42)   # True
-Value.uint(42) == Value.int_(42)   # False (different types!)
-```
-
----
-
-### `Encoder`
-
-```python
-from surp.encoder import Encoder, Limits
-```
-
-#### Basic Usage
-
-```python
-enc = Encoder()
-enc.encode_value(Value.from_python({"key": "value"}))
-data = enc.finish()
-```
-
-#### With String Deduplication
-
-```python
-enc = Encoder()
-enc.enable_dedup()
-enc.encode_value(Value.array([
-    Value.str_("repeated"),
-    Value.str_("repeated"),  # stored as Reference
-]))
-data = enc.finish()
-```
-
-#### Constructor
-
-```python
-Encoder(limits: Limits | None = None)
-```
-
-#### Methods
-
-| Method | Description |
-|--------|-------------|
-| `encode_value(value: Value)` | Encode a Value into the current block |
-| `enable_dedup()` | Enable string deduplication |
-| `set_compression(CompressionType)` | Set block compression type |
-| `flush_block() → int` | Flush current block, return bytes written |
-| `finish() → bytes` | Finalize and return complete binary output |
-| `current_size() → int` | Current output size including unflushed data |
-
----
-
-### `Decoder`
-
-```python
-from surp.decoder import Decoder
-```
-
-#### Basic Usage
-
-```python
-dec = Decoder(data)
-value = dec.decode_next()   # Value
-obj = value.to_python()     # dict/list/str/int/...
-```
-
-#### Decode All
-
-```python
-dec = Decoder(data)
-values = dec.decode_all()   # list[Value]
-```
-
-#### Constructor
-
-```python
-Decoder(data: bytes | bytearray | memoryview, limits: Limits | None = None)
-```
-
-#### Methods
-
-| Method | Description |
-|--------|-------------|
-| `decode_next() → Value` | Decode the next value (reads blocks automatically) |
-| `decode_all() → list[Value]` | Decode all remaining values |
-
-#### Properties
-
-| Property | Description |
-|----------|-------------|
-| `memory_used` | Cumulative tracked memory allocation |
-| `position` | Current byte offset in input |
-
-#### Behavior
-
-- Verifies XXH64 checksums on each block.
-- Resolves `Reference` wire types from the per-block string dictionary.
-- Enforces all `Limits` (nesting depth, memory, block size, string length, item count).
-- Non-data blocks are skipped transparently.
-
----
-
-### `Text Format`
-
-```python
-from surp.text import parse, pretty_print
-```
-
-#### `parse(text: str) → Value`
-
-Parse a Surp text document into a `Value`.
-
-```python
-v = parse('{ name: "Alice"; age: 30; scores: [100, 95]; }')
-```
-
-#### `pretty_print(value: Value, indent: int = 2) → str`
-
-Pretty-print a `Value` in canonical Surp text notation.
-
-```python
-text = pretty_print(v, indent=4)
-# {
-#     name: "Alice";
-#     age: 30;
-#     scores: [100, 95];
-# }
-```
-
-#### Text Syntax
-
-```
-Objects:   { key: value; key2: value2; }    (semicolons required)
-Arrays:    [a, b, c]                        (commas as separators)
-Strings:   "hello world"                    (double-quoted, with escapes)
-Binary:    b64#AQID;                        (base64 with ; terminator)
-Numbers:   42, -1, 3.14, 1e10              (uint, int, float)
-Keywords:  null, true, false
-Annotate:  42::u32, "x"::str               (optional, ignored by parser)
-Comments:  // line   /* block (nested) */
-```
-
----
-
-### `Limits`
-
-```python
-from surp.encoder import Limits
-```
-
-```python
-@dataclass
-class Limits:
-    max_nesting_depth: int = 128
-    max_block_size: int = 64 * 1024 * 1024     # 64 MiB
-    max_items: int = 1_000_000
-    max_memory: int = 256 * 1024 * 1024        # 256 MiB
-    max_string_length: int = 16 * 1024 * 1024  # 16 MiB
-```
-
-| Factory | Description |
-|---------|-------------|
-| `Limits()` | Default limits |
-| `Limits.strict()` | Restrictive limits for untrusted input |
-| `Limits.unlimited()` | No limits (trusted data only) |
-
-Both `Encoder` and `Decoder` accept an optional `limits` parameter.
-
----
-
-### `Wire Types`
-
-```python
-from surp.wire import WireType, BlockType, CompressionType
-```
-
-#### `WireType` (enum)
-
-| Name | Value | Description |
-|------|-------|-------------|
-| `NULL` | `0x00` | No payload |
-| `BOOL` | `0x01` | 1 byte |
-| `VAR_UINT` | `0x02` | LEB128 varint |
-| `VAR_INT` | `0x03` | ZigZag + LEB128 |
-| `FIXED64` | `0x04` | 8 bytes LE |
-| `LEN_DELIMITED` | `0x05` | subtype + len + data |
-| `START_OBJECT` | `0x06` | count + entries |
-| `END_OBJECT` | `0x07` | marker |
-| `START_ARRAY` | `0x08` | count + items |
-| `END_ARRAY` | `0x09` | marker |
-| `REFERENCE` | `0x0A` | varint dict index |
-
-#### `BlockType` (enum)
-
-| Name | Value |
-|------|-------|
-| `DATA` | `0x01` |
-| `INDEX` | `0x02` |
-| `SCHEMA` | `0x03` |
-| `STRING_DICT` | `0x04` |
-| `TRAILER` | `0xFF` |
-
-#### `CompressionType` (enum)
-
-| Name | Value |
-|------|-------|
-| `NONE` | `0x00` |
-| `ZSTD` | `0x01` |
-| `SNAPPY` | `0x02` |
-| `LZ4` | `0x03` |
-
----
-
-### `Varint Utilities`
-
-```python
-from surp.varint import (
-    encode_varint, decode_varint,
-    zigzag_encode, zigzag_decode,
-    encode_signed_varint, decode_signed_varint,
-)
-```
+Supported Python inputs:
+
+- `None`
+- `bool`
+- `int` that fits in signed 64-bit extraction in the native binding
+- `float`
+- `str`
+- `bytes`
+- `list`
+- `tuple` as an array
+- `dict` with string keys
+
+`sort_keys=True` sorts dictionary keys before encoding. `dedup=True` enables
+the v1 per-block string dictionary. `compression` accepts `None`, `"none"`,
+`"lz4"`, `"zstd"`, or `"snappy"`; non-`none` algorithms require a native build
+with the matching Rust feature.
+
+### Functions
 
 | Function | Description |
-|----------|-------------|
-| `encode_varint(value: int) → bytes` | Encode unsigned int as LEB128 |
-| `decode_varint(data, offset) → (int, int)` | Decode LEB128, returns `(value, bytes_consumed)` |
-| `zigzag_encode(value: int) → int` | ZigZag encode signed → unsigned |
-| `zigzag_decode(value: int) → int` | ZigZag decode unsigned → signed |
-| `encode_signed_varint(value: int) → bytes` | ZigZag + LEB128 encode |
-| `decode_signed_varint(data, offset) → (int, int)` | ZigZag + LEB128 decode |
+| --- | --- |
+| `dumps(obj, *, compression=None, dedup=False, sort_keys=False) -> bytes` | Encode one Python object to v1 Surp bytes. |
+| `loads(data, *, strict=True, max_depth=128) -> Any` | Decode v1 Surp bytes. One top-level value returns as the value; multiple values return as a list. |
+| `dump(obj, fp, *, compression=None, dedup=False, sort_keys=False) -> None` | Encode and write bytes to a binary file-like object. |
+| `load(fp, *, strict=True, max_depth=128) -> Any` | Read all bytes from a binary file-like object and decode them. |
+| `encode(obj) -> bytes` | Compatibility wrapper for `dumps(obj)`. |
+| `decode(data) -> Any` | Compatibility wrapper for `loads(data)`. |
+| `encode_to_file(obj, path) -> None` | Path-based encode helper using default options. |
+| `decode_from_file(path) -> Any` | Path-based decode helper. |
+| `parse_text(text) -> Any` | Parse v1 Surp text notation into Python values. |
+| `pretty_print(obj, indent=2) -> str` | Render Python values as v1 Surp text notation. |
 
----
-
-### `Checksum Utilities`
+### File-Like API
 
 ```python
-from surp.checksum import compute_xxh64, verify_xxh64
+from io import BytesIO
+import surp
+
+buf = BytesIO()
+surp.dump({"status": "ok"}, buf)
+buf.seek(0)
+assert surp.load(buf) == {"status": "ok"}
 ```
+
+### Text API
+
+```python
+import surp
+
+obj = surp.parse_text("""
+{
+  name: "Alice";
+  avatar: b64#AQID;
+  tags: ["admin", "ops"];
+}
+""")
+
+text = surp.pretty_print(obj, indent=2)
+assert "Alice" in text
+```
+
+## Incremental API
+
+```python
+import surp
+
+enc = surp.Encoder(sort_keys=True)
+enc.enable_dedup()
+enc.set_compression("none")
+enc.encode({"kind": "user", "name": "Alice"})
+enc.encode({"kind": "user", "name": "Bob"})
+data = enc.finish()
+
+dec = surp.SurpDecoder(data)
+values = dec.decode_all()
+assert len(values) == 2
+```
+
+`Encoder.finish()` and `Encoder.finish_to_file(path)` are one-shot. After an
+encoder is finished, subsequent `encode()` or `finish()` calls raise
+`SurpEncodeError`. `SurpDecoder.decode_all()` is also one-shot and raises
+`SurpDecodeError` if called again.
+
+## Exceptions
+
+| Exception | Base | Raised for |
+| --- | --- | --- |
+| `SurpError` | `Exception` | Base class for package-specific errors |
+| `SurpEncodeError` | `SurpError` | v1 encoding failures |
+| `SurpDecodeError` | `SurpError` | v1 decoding failures |
+| `SurpChecksumError` | `SurpDecodeError` | v1 checksum mismatch detected during decode |
+| `SurpTypeError` | `SurpEncodeError` | unsupported Python value or non-string dict key |
+| `SurpRfcError` | `SurpError` | RFC-001 CTN, CBF, or CQL failures |
+
+## RFC-001 API
+
+RFC-001 helpers live under `surp.rfc001` and call the Rust
+`surp_core::rfc001` implementation.
+
+```python
+from surp import rfc001
+
+ctn = """
+User
+  name = "Alice"
+  tags = ["admin", "ops"]
+  settings = map<str, str> ["theme" => "dark"]
+"""
+
+cbf = rfc001.compile_ctn(ctn, alignment=4)
+decoded = rfc001.decode_cbf(cbf)
+
+assert decoded["header"]["magic"] == "SURP"
+assert decoded["header"]["cbf_version"] == 1
+assert rfc001.query_cbf(cbf, ".tags[-1]", as_ctn=True) == ['"ops"']
+```
+
+### RFC-001 Functions
 
 | Function | Description |
-|----------|-------------|
-| `compute_xxh64(data: bytes) → int` | Compute XXH64 hash (seed=0) |
-| `verify_xxh64(data: bytes, expected: int) → bool` | Verify XXH64 hash |
+| --- | --- |
+| `parse_ctn(text) -> RfcDocument` | Parse CTN into typed dictionaries. |
+| `normalize_ctn(text) -> str` | Parse and render CTN using the Rust formatter. |
+| `compile_ctn(text, *, with_symtab=True, alignment=0) -> bytes` | Compile CTN to CBF bytes. |
+| `decode_cbf(data) -> RfcDecodedCbf` | Decode CBF into header, symbols, document, and formatted CTN. |
+| `cbf_to_ctn(data) -> str` | Decode CBF and return only CTN text. |
+| `query_cbf(data, query, *, as_ctn=False) -> list[Any]` | Run baseline CQL over CBF. |
+| `query_ctn(text, query, *, as_ctn=False) -> list[Any]` | Compile/decode CTN and run baseline CQL. |
 
-Reference vectors:
+Constants:
 
-```python
-assert compute_xxh64(b"") == 0xEF46DB3751D8E999
-assert compute_xxh64(b"hello") == 0x26C7827D889F6DA3
-```
+- `rfc001.CBF_MAGIC == b"SURP"`
+- `rfc001.CBF_HEADER_SIZE == 32`
 
----
+`compile_ctn(..., with_symtab=False)` rejects documents that contain symbol
+values because the current CBF symbol encoding requires a symbol table. Plain
+string/number/bool/product documents can compile without a symbol table.
 
-### `Errors`
+### Typed RFC Values
 
-```python
-from surp.error import (
-    SurpError,            # Base class
-    InvalidMagicError,     # Bad magic in formats that use magic bytes
-    ChecksumMismatchError, # Block checksum failed
-    NestingTooDeepError,   # Exceeded max_nesting_depth
-    UnexpectedEofError,    # Truncated input
-    MemoryLimitError,      # Exceeded max_memory or max_string_length
-)
-```
+RFC values are explicit dictionaries so Python callers do not lose RFC-specific
+types.
 
-All errors inherit from `SurpError`.
-
----
-
-## Native Extension API (PyO3)
-
-The `_surp_native` module provides Rust-backed encoding/decoding for maximum performance.
+Scalar:
 
 ```python
-import _surp_native as cn
+{"kind": "scalar", "type": "str", "value": "Alice"}
+{"kind": "scalar", "type": "sym", "value": "Admin"}
+{"kind": "scalar", "type": "tagged", "tag": "uid", "value": "..."}
+{"kind": "scalar", "type": "bytes", "value": b"..."}
 ```
 
-### Native `encode` / `decode`
-
-#### `cn.encode(obj) → bytes`
-
-Encode a Python object to Surp binary. Accepts: `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, `bytes`.
+Product:
 
 ```python
-data = cn.encode({"name": "Alice", "age": 30})
+{
+    "kind": "product",
+    "type_name": "User",
+    "fields": [
+        {"name": "name", "value": {"kind": "scalar", "type": "str", "value": "Alice"}}
+    ],
+}
 ```
 
-Raises `TypeError` for unsupported types, `RuntimeError` for encoding errors.
-
-#### `cn.decode(data: bytes) → object`
-
-Decode Surp binary back to Python objects. Returns a single value if one top-level value, otherwise a list.
+Sequence:
 
 ```python
-obj = cn.decode(data)  # → {'name': 'Alice', 'age': 30}
+{
+    "kind": "sequence",
+    "elem_type": None,
+    "items": [{"kind": "scalar", "type": "str", "value": "admin"}],
+}
 ```
 
-### Native `Encoder` Class
+Association/map:
 
 ```python
-enc = cn.Encoder()
+{
+    "kind": "association",
+    "pairs": [
+        [
+            {"kind": "scalar", "type": "str", "value": "theme"},
+            {"kind": "scalar", "type": "str", "value": "dark"},
+        ]
+    ],
+}
 ```
 
-| Method | Description |
-|--------|-------------|
-| `enable_dedup()` | Enable string deduplication |
-| `set_compression(name: str)` | Set compression: `"none"`, `"lz4"`, `"zstd"`, `"snappy"` |
-| `encode(obj)` | Encode a Python value |
-| `finish() → bytes` | Finalize and return bytes. **Encoder is consumed.** |
+Tensor:
 
 ```python
-enc = cn.Encoder()
-enc.enable_dedup()
-enc.set_compression("lz4")
-enc.encode({"key": "value"})
-data = enc.finish()
-# enc.encode(...) → RuntimeError: encoder already finished
+{
+    "kind": "tensor",
+    "element_type": "f32",
+    "shape": [2, 2],
+    "annotations": [],
+    "data": {"kind": "dense_f64", "values": [1.0, 2.0, 3.0, 4.0]},
+}
 ```
 
-### Native `SurpDecoder` Class
+CBF decoding validates the RFC-001 CRC64 trailer before returning data.
 
-```python
-dec = cn.SurpDecoder(data)
+## Examples
+
+Runnable examples are under `examples/`:
+
+```bash
+python examples/python_v1.py
+python examples/python_rfc001.py
+cargo run --manifest-path examples/rust/Cargo.toml --bin v1_roundtrip
+cargo run --manifest-path examples/rust/Cargo.toml --bin rfc001_ctn_cbf_cql
 ```
-
-| Method | Description |
-|--------|-------------|
-| `decode_all() → list` | Decode all values. **Decoder is consumed.** |
-
-```python
-dec = cn.SurpDecoder(data)
-values = dec.decode_all()  # list of Python objects
-# dec.decode_all() → RuntimeError: decoder already consumed
-```
-
----
-
-## Interoperability
-
-### Python ↔ Rust Parity
-
-Data encoded by one implementation can be decoded by any other:
-
-```python
-# Pure Python → Native Rust
-import surp
-import _surp_native as cn
-
-data_py = surp.encode({"name": "Alice"})
-obj = cn.decode(data_py)
-assert obj == {"name": "Alice"}
-
-# Native Rust → Pure Python
-data_rs = cn.encode({"name": "Bob"})
-obj = surp.decode(data_rs)
-assert obj == {"name": "Bob"}
-```
-
-### String Deduplication Interop
-
-Both implementations produce compatible dedup-encoded output:
-
-```python
-# Python dedup
-import surp
-from surp.encoder import Encoder
-from surp.value import Value
-
-enc = Encoder()
-enc.enable_dedup()
-enc.encode_value(Value.array([Value.str_("x"), Value.str_("x")]))
-data = enc.finish()
-
-# Rust decode
-import _surp_native as cn
-assert cn.decode(data) == ["x", "x"]
-```
-
-### Wire Format
-
-Surp binary data starts directly with a block header:
-`block_type(1) | length(varint) | compression(1) | checksum(8) | payload`.
-
----
-
-## Performance Notes
-
-The pure Python implementation is fully functional and spec-compliant but optimized for clarity, not speed. For performance-critical workloads, use the native extension:
-
-| Operation | Pure Python | Native (PyO3/Rust) | Speedup |
-|-----------|-------------|---------------------|---------|
-| Encode small dict | ~100 µs | ~5 µs | ~20× |
-| Decode small dict | ~80 µs | ~4 µs | ~20× |
-| Encode 1000 objects | ~50 ms | ~2 ms | ~25× |
-
-The native extension uses the same `surp-core` Rust library that powers the CLI and FFI bindings, ensuring identical behavior and wire format compatibility.
-
-**Recommendation:** Use `_surp_native` (via `maturin develop`) for production workloads. Use `surp` (pure Python) for learning, debugging, prototyping, and environments where a Rust toolchain is unavailable.
-
----
-
-*Generated from Surp v1.1.0 Python codebase. See `docs/SPEC.md` for the full wire format specification.*

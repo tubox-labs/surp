@@ -1,0 +1,11 @@
+{
+  "id": 1001,
+  "name": "Alice",
+  "active": true,
+  "tags": ["admin", "ops"],
+  "settings": {
+    "theme": "dark",
+    "region": "us"
+  },
+  "scores": [100, 95, 87]
+}

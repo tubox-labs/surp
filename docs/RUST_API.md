@@ -1,120 +1,67 @@
-# Surp — Rust API Documentation
+# Surp Rust API
 
-> A compact, canonical binary serializer and human-readable alternative to JSON.
+Version: 1.0.0
+Edition: 2024
+MSRV: 1.85.0
+License: MIT OR Apache-2.0
 
-**Version:** 1.1.0 · **Edition:** 2024 · **MSRV:** 1.85.0 · **License:** MIT OR Apache-2.0
+This document describes the Rust API as implemented in this repository. It
+covers the stable v1 binary/text APIs and the additive RFC-001 CTN/CBF/CQL
+modules.
 
----
+## Workspace Crates
 
-## Table of Contents
+| Crate | Purpose | Default features |
+| --- | --- | --- |
+| `surp-core` | v1 `Value`, encoder, decoder, text parser/printer, RFC-001 modules | none |
+| `surp-derive` | `#[derive(Surp)]` and `#[derive(SurpSchema)]` for named structs | none |
+| `surp-io` | Tokio framed IO, file/shared-buffer helpers, optional mmap reader | none |
+| `surp-cli` | `surp` command line tool for v1 files and RFC-001 CBF files | none |
+| `surp-compression` | pluggable compression trait and optional zstd/lz4/snappy adapters | none |
+| `surp-ffi` | C ABI helpers for JSON-to-Surp and Surp-to-JSON buffers | none |
+| `surp-simd` | byte scanning and batched varint helpers with scalar fallback | none |
+| `surp-python` | PyO3 extension backing the Python package named `surp` | none |
+| `bench` | local regression benchmark harness | none |
 
-1. [Overview](#overview)
-2. [Crate Map](#crate-map)
-3. [Quick Start](#quick-start)
-4. [Core Types](#core-types)
-5. [Encoder](#encoder)
-6. [Decoder](#decoder)
-7. [Text Format](#text-format)
-8. [Derive Macros](#derive-macros)
-9. [Compression](#compression)
-10. [IO & Streaming](#io--streaming)
-11. [SIMD Acceleration](#simd-acceleration)
-12. [FFI (C Bindings)](#ffi-c-bindings)
-13. [Python Bindings](#python-bindings)
-14. [Resource Limits](#resource-limits)
-15. [Wire Format Summary](#wire-format-summary)
-16. [Feature Flags](#feature-flags)
-17. [Performance](#performance)
-18. [Safety & Security](#safety--security)
-
----
-
-## Overview
-
-Surp is a binary serialization format designed for:
-
-- **Compact output** — varint integers, no redundant delimiters, binary-native blobs
-- **Canonical encoding** — deterministic byte output for the same logical data
-- **Zero-copy decoding** — borrow strings/bytes directly from the input buffer
-- **Block framing** — XXH64 checksummed blocks with optional compression
-- **String deduplication** — prefix-delta StringDict blocks for repeated keys
-- **Human-readable text** — a 1:1 text notation (`{ key: value; }`) for debugging
-
-## Crate Map
-
-| Crate | Purpose |
-|-------|---------|
-| `surp-core` | Encoder, Decoder, Value types, wire format, text parser |
-| `surp-derive` | `#[derive(Surp)]` and `#[derive(SurpSchema)]` proc macros |
-| `surp-compression` | Pluggable compression (zstd, lz4, snappy) |
-| `surp-io` | Async IO (Tokio framed streams), mmap, Bytes API |
-| `surp-simd` | SIMD-accelerated varint decode, byte scanning (NEON/SSE2) |
-| `surp-ffi` | C-compatible FFI (`surp_encode_buffer`, `surp_decode_buffer`) |
-| `surp-python` | PyO3 native Python extension |
-
-## Quick Start
-
-Add to `Cargo.toml`:
+## Install
 
 ```toml
 [dependencies]
-surp-core = "1.1"
+surp-core = "1.0.0"
 ```
 
-### Encode & Decode
+For local examples in this repository, use path dependencies:
+
+```toml
+[dependencies]
+surp-core = { path = "../../surp-core" }
+surp-derive = { path = "../../surp-derive" }
+```
+
+## v1 Binary API
 
 ```rust
-use surp_core::{Encoder, Decoder, Value};
+use surp_core::{Decoder, Encoder, Value};
 
-// Encode
-let mut encoder = Encoder::new();
-encoder.encode_value(&Value::Object(vec![
+let value = Value::Object(vec![
     ("name".into(), Value::Str("Alice".into())),
     ("age".into(), Value::UInt(30)),
-])).unwrap();
-let bytes = encoder.finish().unwrap();
+    ("active".into(), Value::Bool(true)),
+]);
 
-// Decode (zero-copy)
+let mut encoder = Encoder::new();
+encoder.encode_value(&value)?;
+let bytes = encoder.finish()?;
+
 let mut decoder = Decoder::new(&bytes);
-let value = decoder.decode_next().unwrap();  // SurpValue<'_>
-let owned = value.to_owned_value();          // Value (heap)
+let decoded = decoder.decode_next()?.to_owned_value();
+assert_eq!(decoded, value);
+# Ok::<(), surp_core::SurpError>(())
 ```
 
-### With String Dedup
+### `Value`
 
-```rust
-use surp_core::{Encoder, Decoder, Value};
-
-let mut enc = Encoder::new();
-enc.enable_dedup();
-enc.encode_value(&Value::Array(vec![
-    Value::Str("repeated_key".into()),
-    Value::Str("repeated_key".into()),  // stored as Reference
-])).unwrap();
-let bytes = enc.finish().unwrap();
-```
-
-### With Compression (feature = `lz4`)
-
-```rust
-use surp_core::{Encoder, Decoder, Value};
-use surp_core::wire::CompressionType;
-
-let mut enc = Encoder::new();
-enc.set_compression(CompressionType::Lz4);
-enc.encode_value(&Value::Str("data...".repeat(100))).unwrap();
-let bytes = enc.finish().unwrap();
-
-// Compressed blocks require owned decode
-let mut dec = Decoder::new(&bytes);
-let values = dec.decode_all_owned().unwrap();
-```
-
----
-
-## Core Types
-
-### `Value` (owned)
+`Value` is the owned v1 data model:
 
 ```rust
 pub enum Value {
@@ -130,11 +77,14 @@ pub enum Value {
 }
 ```
 
-Helper methods: `type_name()`, `is_null()`, `as_str()`, `as_uint()`, `as_int()`, `as_float()`, `as_bool()`, `as_array()`, `as_object()`.
+Objects preserve entry order because they are represented as `Vec<(String,
+Value)>`. `Value` has helper methods such as `type_name()`, `is_null()`,
+`as_str()`, `as_uint()`, `as_int()`, `as_float()`, `as_bool()`, `as_array()`,
+and `as_object()`.
 
-Implements `Display` for human-readable output and bidirectional conversion with `serde_json::Value` via `From`.
+### `SurpValue<'a>`
 
-### `SurpValue<'a>` (zero-copy)
+`SurpValue<'a>` is the zero-copy decode representation:
 
 ```rust
 pub enum SurpValue<'a> {
@@ -143,518 +93,286 @@ pub enum SurpValue<'a> {
     UInt(u64),
     Int(i64),
     Float(f64),
-    Str(&'a str),       // borrows from input
-    Bytes(&'a [u8]),    // borrows from input
+    Str(&'a str),
+    Bytes(&'a [u8]),
     Array(Vec<SurpValue<'a>>),
     Object(Vec<(&'a str, SurpValue<'a>)>),
 }
 ```
 
-Call `.to_owned_value()` to convert to `Value`.
-
----
+Call `to_owned_value()` when a decoded value needs to outlive the input bytes.
+Zero-copy decoding works on uncompressed data blocks. Use the owned decode path
+for compressed blocks.
 
 ## Encoder
 
-```rust
-pub struct Encoder { /* ... */ }
-```
+| Method | Behavior |
+| --- | --- |
+| `Encoder::new()` | Default encoder with default limits and no compression/dedup |
+| `Encoder::with_limits(limits)` | Encoder with custom `Limits` |
+| `Encoder::with_size_hint(bytes)` | Pre-allocate output and block buffers |
+| `enable_dedup()` | Enable per-block string dictionary deduplication |
+| `set_compression(CompressionType)` | Select `None`, `Lz4`, `Zstd`, or `Snappy` |
+| `encode_value(&Value)` | Append one value to the current block payload |
+| `flush_block()` | Emit the current block without finalizing the file |
+| `finish()` | Flush remaining data and append the trailer block |
+| `current_size()` | Return written bytes plus unflushed block bytes |
 
-### Construction
+`finish()` writes a data block and a trailer block. If string deduplication is
+enabled and any strings were observed, it emits a `StringDict` block before the
+data block. The current implementation deduplicates repeated strings only; it
+does not perform structural subtree deduplication.
 
-| Method | Description |
-|--------|-------------|
-| `Encoder::new()` | Default encoder |
-| `Encoder::with_limits(limits)` | Custom resource limits |
-
-### Configuration
-
-| Method | Description |
-|--------|-------------|
-| `enable_dedup()` | Enable string deduplication (StringDict + Reference) |
-| `set_compression(CompressionType)` | Set block compression (`None`, `Lz4`, `Zstd`, `Snappy`) |
-
-### Encoding
-
-| Method | Description |
-|--------|-------------|
-| `encode_value(&Value) → Result<()>` | Encode a single value into the current block |
-| `finish() → Result<Vec<u8>>` | Flush the current block, write trailer, return bytes |
-
-### Behavior
-
-- `finish()` emits a StringDict block (if dedup enabled and strings were recorded), then a Data block with optional compression, then a Trailer block with a whole-file XXH64 checksum.
-- Compression uses a ratio threshold: if the compressed payload is not smaller than the original, it falls back to uncompressed.
-- Nesting depth is enforced against `Limits::max_nesting_depth`.
-
----
+Compression is feature gated in `surp-core`. If a requested compression feature
+is not compiled in, the encoder falls back to uncompressed output because
+`compress_payload()` returns `None`.
 
 ## Decoder
 
-```rust
-pub struct Decoder<'a> { /* ... */ }
-```
-
-### Construction
-
-| Method | Description |
-|--------|-------------|
-| `Decoder::new(data: &[u8])` | Default decoder |
-| `Decoder::with_limits(data, limits)` | Custom resource limits |
-
-### Decoding
-
-| Method | Description |
-|--------|-------------|
-| `decode_next() → Result<SurpValue<'a>>` | Decode next value (zero-copy). Fails on compressed blocks. |
-| `decode_next_owned() → Result<Value>` | Decode next value (owned). Works with compressed blocks. |
-| `decode_all() → Result<Vec<SurpValue<'a>>>` | Decode all remaining values (zero-copy). |
-| `decode_all_owned() → Result<Vec<Value>>` | Decode all remaining values (owned). |
-
-### Inspection
-
-| Method | Description |
-|--------|-------------|
-| `position() → usize` | Current byte offset in input |
-| `memory_used() → usize` | Cumulative tracked memory allocation |
-
-### Behavior
-
-- Each block's XXH64 checksum is verified before decoding.
-- StringDict blocks are consumed transparently — they populate the string dictionary, then the decoder loops to read the next Data block.
-- Compressed blocks are decompressed into an internal buffer for the owned decode path; zero-copy decode rejects them with an error.
-- Reference wire types are resolved from the per-block string dictionary (both `str_slices` for zero-copy and `owned_strings` for owned).
-- All resource limits (nesting, memory, block size, string length, item count) are enforced.
-
-### `BumpDecoder` (feature = `fast-alloc`)
-
-```rust
-pub struct BumpDecoder<'a> { /* ... */ }
-```
-
-Wraps `Decoder` with a `bumpalo::Bump` arena for scratch memory. Call `reset_arena()` between blocks to reclaim memory without deallocating backing storage.
-
----
-
-## Text Format
-
-The Surp text notation provides a 1:1 mapping to the binary format:
-
-```text
-{
-    name: "Alice";
-    age: 30;
-    scores: [100, 95, 87];
-    active: true;
-    avatar: b64#iVBOR...;
-}
-```
-
-### API
-
-```rust
-use surp_core::text::{parse, pretty_print};
-use surp_core::Value;
-
-let value = parse(r#"{ name: "Alice"; age: 30; }"#).unwrap();
-let text = pretty_print(&value, 4);  // indent=4
-```
-
-### Syntax Rules
-
-- Objects: `{ key: value; }` — semicolons are mandatory terminators
-- Arrays: `[a, b, c]` — commas as separators
-- Strings: `"double-quoted"` with `\n`, `\t`, `\\`, `\"` escapes
-- Binary: `b64#<base64-data>;` using standard base64
-- Numbers: bare digits for uint, `-` prefix for int, `.` for float
-- Keywords: `null`, `true`, `false`
-- Type annotations: `42::u32` (optional, skipped during parse)
-- Comments: `// line` and `/* block */` (nested)
-
----
-
-## Derive Macros
-
-```rust
-use surp_derive::{Surp, SurpSchema};
-use surp_core::SurpBytes;
-
-#[derive(Debug, PartialEq, Surp, SurpSchema)]
-struct Person {
-    #[surp(id = 1)] name: String,
-    #[surp(id = 2)] age: u8,
-    #[surp(id = 3)] tags: Vec<String>,
-    #[surp(id = 4)] avatar: SurpBytes,
-}
-```
-
-### `#[derive(Surp)]`
-
-Generates:
-- `to_surp_value(&self) → Value` — serializes fields as an Object
-- `from_surp_value(&Value) → Result<Self>` — deserializes from Object, skipping unknown fields
-- `schema_fingerprint() → u64` — XXH64 of `TypeName:field1=id1,field2=id2,...`
-- `type_name() → &'static str`
-
-Convenience methods from the trait:
-- `to_surp_bytes() → Result<Vec<u8>>` — encode to binary
-- `from_surp_bytes(data) → Result<Self>` — decode from binary
-- `from_surp_bytes_with_limits(data, limits) → Result<Self>` — decode with limits
-
-### `#[derive(SurpSchema)]`
-
-Generates:
-- `schema_info() → &'static [(&str, u64)]` — field name/ID pairs
-- `schema_type_name() → &'static str`
-
-### Blanket Implementations
-
-The `Surp` trait has built-in implementations for all common Rust types:
-
-| Rust type | Surp `Value` | Notes |
-|-----------|---------------|-------|
-| `bool` | `Bool` | |
-| `u8`, `u16`, `u32`, `u64`, `usize` | `UInt` | widened to `u64`, range-checked on decode |
-| `u128` | `UInt` | panics on encode if > `u64::MAX` |
-| `i8`, `i16`, `i32`, `i64`, `isize` | `Int` | widened to `i64`, range-checked on decode |
-| `i128` | `Int` | panics on encode if outside `i64` range |
-| `f32`, `f64` | `Float` | `f32` widened to `f64` |
-| `String`, `Box<str>` | `Str` | |
-| `SurpBytes` | `Bytes` | newtype for raw binary blobs |
-| `Vec<u8>` | `Array` of `UInt` | use `SurpBytes` for `Value::Bytes` |
-| `Vec<T: Surp>` | `Array` | |
-| `Option<T: Surp>` | `T` or `Null` | |
-| `Box<T: Surp>` | delegates to `T` | transparent wrapper |
-| `HashMap<String, T>` | `Object` | insertion-order not guaranteed |
-| `BTreeMap<String, T>` | `Object` | sorted by key |
-| `(A,)` … `(A,B,C,D,E,F)` | `Array` | heterogeneous tuples up to 6 elements |
-| `()` | `Null` | unit type |
-
-> **`Vec<u8>` vs `SurpBytes`**: `Vec<u8>` encodes as an `Array` of `UInt` values via the generic `Vec<T>` impl. Use `SurpBytes(Vec<u8>)` when you want the compact `Value::Bytes` wire encoding for raw binary data.
-
-Signed integer types (`i8`–`i64`, `isize`) also accept `Value::UInt` on decode when the value fits, providing cross-compatibility with unsigned encoders.
-
----
-
-## Compression
-
-**Crate:** `surp-compression`
-
-### Trait
-
-```rust
-pub trait Compressor: Send + Sync {
-    fn compression_type(&self) -> CompressionType;
-    fn compress(&self, input: &[u8]) -> Result<Vec<u8>>;
-    fn decompress(&self, input: &[u8], max_output: usize) -> Result<Vec<u8>>;
-    fn name(&self) -> &'static str;
-}
-```
-
-### Built-in Compressors
-
-| Type | Feature | Crate | Notes |
-|------|---------|-------|-------|
-| `NoCompression` | always | — | Passthrough |
-| `ZstdCompressor` | `zstd` | zstd 0.13 | Level 1–22, default 3 |
-| `Lz4Compressor` | `lz4` | lz4_flex 0.11 | Pure Rust, prepend-size framing |
-| `SnappyCompressor` | `snappy` | snap 1 | Google Snappy via snap crate |
-
-### Adaptive Selection
-
-```rust
-use surp_compression::{AdaptiveSelector, CompressorRegistry};
-
-let reg = CompressorRegistry::with_defaults();
-let selector = AdaptiveSelector::default(); // ratio_threshold: 0.9, sample: 64KB
-let best = selector.select(data, &reg);
-```
-
-### Registry
-
-```rust
-let mut reg = CompressorRegistry::new();
-reg.register(Box::new(MyCustomCompressor));
-let comp = reg.find(CompressionType::Lz4);
-```
-
----
-
-## IO & Streaming
-
-**Crate:** `surp-io`
-
-### Convenience Functions
-
-```rust
-use surp_io::{read_file_bytes, write_values_to_bytes};
-
-let values = read_file_bytes(&data)?;
-let bytes = write_values_to_bytes(&values)?;
-```
-
-### Shared Buffers (bytes::Bytes)
-
-```rust
-use surp_io::{read_from_shared, write_to_shared};
-
-let shared = write_to_shared(&values)?;  // bytes::Bytes
-let values = read_from_shared(shared)?;
-```
-
-### Async Framed IO (Tokio)
-
-```rust
-use surp_io::FramedWriter;
-
-let mut writer = FramedWriter::new(tcp_stream);
-writer.write_data(payload).await?;
-writer.flush().await?;
-```
-
-```rust
-use surp_io::FramedReader;
-
-let mut reader = FramedReader::new(tcp_stream);
-while let Some(block) = reader.read_next_block_raw().await? {
-    // process block bytes
-}
-```
-
-### Memory-Mapped Files (feature = `mmap`)
-
-```rust
-use surp_io::MmapReader;
-
-let reader = MmapReader::open("data.surp")?;
-let values = reader.decode_all()?;           // owned
-let borrowed = reader.decode_all_borrowed()?; // zero-copy SurpValue<'_>
-```
-
----
-
-## SIMD Acceleration
-
-**Crate:** `surp-simd`
-
-Provides optimized byte-level operations with automatic platform fallbacks.
-
-| Function | Description | SIMD |
-|----------|-------------|------|
-| `find_byte(data, needle)` | First occurrence of byte | NEON 16B |
-| `count_byte(data, needle)` | Count occurrences | NEON 16B |
-| `find_non_ascii(data)` | First byte ≥ 0x80 (UTF-8 prescan) | NEON 16B |
-| `batch_decode_varints(data, count)` | Decode multiple LEB128 varints | scalar |
-| `batch_decode_varints_simd(data, count)` | SIMD-prescan varint boundaries | NEON (feature `simd-varint`) |
-
-All functions fall back to scalar implementations on unsupported architectures.
-
----
-
-## FFI (C Bindings)
-
-**Crate:** `surp-ffi`
-
-```c
-// Encode JSON → Surp binary
-int surp_encode_buffer(
-    const uint8_t *in_ptr, size_t in_len,
-    uint8_t **out_ptr, size_t *out_len
-);
-
-// Decode Surp binary → JSON string
-int surp_decode_buffer(
-    const uint8_t *in_ptr, size_t in_len,
-    uint8_t **json_out, size_t *json_len
-);
-
-// Free library-allocated memory
-void surp_free(uint8_t *ptr, size_t len);
-```
-
-Returns `0` on success, `-1` on error. Caller must free output with `surp_free`.
-
----
-
-## Python Bindings
-
-**Crate:** `surp-python` (PyO3 0.28)
-
-Build with `maturin develop` inside the `surp-python/` directory.
-
-```python
-import _surp_native as cn
-
-# Module-level functions
-data = cn.encode({"name": "Alice", "age": 30})
-obj = cn.decode(data)
-
-# Encoder class
-enc = cn.Encoder()
-enc.enable_dedup()
-enc.set_compression("lz4")
-enc.encode({"key": "value"})
-data = enc.finish()
-
-# Decoder class
-dec = cn.SurpDecoder(data)
-values = dec.decode_all()  # returns list
-```
-
----
+| Method | Behavior |
+| --- | --- |
+| `Decoder::new(data)` | Decoder with default limits |
+| `Decoder::with_limits(data, limits)` | Decoder with explicit limits |
+| `decode_next()` | Decode one uncompressed value as `SurpValue<'a>` |
+| `decode_next_owned()` | Decode one value as owned `Value`, including compressed blocks |
+| `decode_all()` | Decode all remaining uncompressed values |
+| `decode_all_owned()` | Decode all remaining values as owned `Value`s |
+| `skip_value_at(block_end)` | Skip a value from the current block position |
+| `position()` | Current input offset |
+| `memory_used()` | Cumulative tracked allocations |
+
+The decoder verifies block checksums, consumes `StringDict` blocks
+transparently, enforces resource limits, and returns an invalid-reference error
+for out-of-bounds dictionary references.
 
 ## Resource Limits
 
 ```rust
 use surp_core::Limits;
+
+let strict = Limits::strict();
+let custom = Limits {
+    max_nesting_depth: 64,
+    ..Limits::default()
+};
 ```
 
-| Field | Default | Strict | Unlimited |
-|-------|---------|--------|-----------|
-| `max_nesting_depth` | 128 | 32 | `usize::MAX` |
-| `max_block_size` | 64 MiB | 1 MiB | `usize::MAX` |
-| `max_items` | 1,000,000 | 10,000 | `usize::MAX` |
-| `max_memory` | 256 MiB | 4 MiB | `usize::MAX` |
-| `max_string_length` | 16 MiB | 64 KiB | `usize::MAX` |
+| Field | Default | Strict |
+| --- | ---: | ---: |
+| `max_nesting_depth` | 128 | 32 |
+| `max_block_size` | 64 MiB | 1 MiB |
+| `max_items` | 1,000,000 | 10,000 |
+| `max_memory` | 256 MiB | 4 MiB |
+| `max_string_length` | 16 MiB | 64 KiB |
+| `max_decompression_ratio` | 100:1 | 20:1 |
+
+`Limits::unlimited()` is available for trusted inputs only.
+
+## Text Format
 
 ```rust
-let limits = Limits::strict();          // for untrusted input
-let limits = Limits::unlimited();       // for trusted data only
-let limits = Limits { max_nesting_depth: 64, ..Limits::default() };
+use surp_core::text::{parse, pretty_print};
+
+let value = parse(r#"{ name: "Alice"; age: 30; avatar: b64#AQID; }"#)?;
+let text = pretty_print(&value, 2);
+# Ok::<(), surp_core::SurpError>(())
 ```
 
----
+Implemented syntax includes objects, arrays, strings, base64 bytes, signed and
+unsigned integers, floats, `inf`, `-inf`, `NaN`, `null`, booleans, optional
+`::type` annotations, `//` line comments, and nested `/* ... */` block
+comments.
 
-## Wire Format Summary
+Important parser details:
 
-### File Layout
+- Object fields use `key: value;`.
+- Arrays use commas, and the parser also accepts semicolons between array
+  elements.
+- Binary values are written as `b64#<standard-base64>`; object field
+  semicolons are field terminators, not part of the bytes literal.
+- Pretty printing emits `Int(0)` as `-0` so reparsing preserves signed zero as
+  `Value::Int(0)`.
 
+## Derive Macros
+
+```rust
+use surp_core::{Surp, SurpBytes};
+
+#[derive(Debug, PartialEq, surp_derive::Surp, surp_derive::SurpSchema)]
+struct Profile {
+    #[surp(id = 1)]
+    name: String,
+    #[surp(id = 2)]
+    age: u8,
+    #[surp(id = 3)]
+    avatar: SurpBytes,
+}
+
+let profile = Profile {
+    name: "Alice".into(),
+    age: 30,
+    avatar: SurpBytes::new(vec![1, 2, 3]),
+};
+
+let bytes = profile.to_surp_bytes()?;
+let decoded = Profile::from_surp_bytes(&bytes)?;
+assert_eq!(decoded, profile);
+# Ok::<(), surp_core::SurpError>(())
 ```
-┌─────────────┐
-│ Block 0     │  [StringDict block, if dedup]
-├─────────────┤
-│ Block 1     │  Data block (values)
-├─────────────┤
-│ ...         │
-├─────────────┤
-│ Trailer     │  Type=0xFF, whole-file XXH64
-└─────────────┘
+
+`#[derive(Surp)]` currently supports named structs. Fields should use stable
+`#[surp(id = N)]` attributes. If an ID is omitted, the macro falls back to a
+field-name hash, but explicit IDs are the intended schema-evolution path.
+
+Generated `Surp` behavior:
+
+- `to_surp_value(&self) -> Value`
+- `from_surp_value(&Value) -> Result<Self>`
+- `schema_fingerprint() -> u64`
+- `type_name() -> &'static str`
+- Unknown fields are skipped during decode.
+
+Generated `SurpSchema` behavior:
+
+- `schema_info() -> &'static [(&'static str, u64)]`
+- `schema_type_name() -> &'static str`
+
+The `Surp` trait has implementations for booleans, unsigned and signed integer
+families, floats, `String`, `Box<str>`, `SurpBytes`, `Vec<T>`, `Option<T>`,
+`Box<T>`, `HashMap<String, T>`, `BTreeMap<String, T>`, tuples up to six
+elements, and `()`.
+
+Use `SurpBytes` when raw bytes should encode as `Value::Bytes`. A plain
+`Vec<u8>` encodes through the generic `Vec<T>` implementation as an array of
+unsigned integers.
+
+## Compression
+
+`surp-core` can encode/decode compressed blocks when built with matching
+features:
+
+| `surp-core` feature | Wire type | Dependency |
+| --- | --- | --- |
+| `lz4` | `CompressionType::Lz4` | `lz4_flex` |
+| `zstd` | `CompressionType::Zstd` | `zstd` |
+| `snappy` | `CompressionType::Snappy` | `snap` |
+
+The separate `surp-compression` crate provides:
+
+- `Compressor` trait
+- `NoCompression`
+- `ZstdCompressor` behind `zstd`
+- `Lz4Compressor` behind `lz4`
+- `SnappyCompressor` behind `snappy`
+- `CompressorRegistry`
+- `AdaptiveSelector`
+
+## IO Helpers
+
+`surp-io` exposes:
+
+- `write_values_to_bytes(&[Value])`
+- `read_file_bytes(&[u8])`
+- `write_to_shared(&[Value]) -> bytes::Bytes`
+- `read_from_shared(bytes::Bytes)`
+- `FramedWriter<W>` and `FramedReader<R>` for Tokio async streams
+- `MmapReader` behind the `mmap` feature
+
+## SIMD Helpers
+
+`surp-simd` exposes scalar-safe helpers and an optional aarch64 NEON path:
+
+- `find_byte(data, needle)`
+- `count_byte(data, needle)`
+- `find_non_ascii(data)`
+- `batch_decode_varints(data, count)`
+- `batch_decode_varints_simd(data, count)` behind `simd-varint`
+
+Unsupported architectures use scalar fallback implementations. The source does
+not currently implement an x86-specific SIMD path.
+
+## FFI
+
+`surp-ffi` exports a small C ABI:
+
+```c
+int surp_encode_buffer(
+    const uint8_t *in_ptr, size_t in_len,
+    uint8_t **out_ptr, size_t *out_len
+);
+
+int surp_decode_buffer(
+    const uint8_t *in_ptr, size_t in_len,
+    uint8_t **json_out, size_t *json_len
+);
+
+void surp_free(uint8_t *ptr, size_t len);
 ```
 
-### Block Layout
+The FFI layer accepts JSON bytes for encode, returns JSON bytes for decode, and
+requires callers to release library-allocated output with `surp_free`.
 
+## RFC-001 Rust API
+
+RFC-001 lives under `surp_core::rfc001` and is additive to the v1 API.
+
+```rust
+use surp_core::rfc001;
+
+let ctn = r#"
+User
+  name = "Alice"
+  tags = ["admin", "ops"]
+"#;
+
+let doc = rfc001::parse_document(ctn)?;
+let cbf = rfc001::encode_document(&doc, rfc001::EncodeOptions::default())?;
+let decoded = rfc001::decode_document(&cbf)?;
+let root = decoded.document.effective_root()?;
+let tags = rfc001::query(&root, ".tags[]")?;
+assert_eq!(tags.len(), 2);
+# Ok::<(), surp_core::SurpError>(())
 ```
-block_type (1B) | payload_len (varint) | compression (1B) | checksum (8B, XXH64) | payload
-```
 
-### Wire Types (low 4 bits of tag byte)
+Public RFC-001 exports include:
 
-| Tag | Name | Payload |
-|-----|------|---------|
-| `0x00` | Null | none |
-| `0x01` | Bool | 1 byte (0/1) |
-| `0x02` | VarUInt | LEB128 |
-| `0x03` | VarInt | ZigZag + LEB128 |
-| `0x04` | Fixed64 | 8 bytes LE (f64) |
-| `0x05` | LenDelimited | subtype(1B) + len(varint) + bytes |
-| `0x06` | StartObject | count(varint) + entries + EndObject |
-| `0x07` | EndObject | none |
-| `0x08` | StartArray | count(varint) + items + EndArray |
-| `0x09` | EndArray | none |
-| `0x0A` | Reference | varint (string dictionary index) |
+- AST: `Document`, `Annotation`, `Binding`, `Value`, `Scalar`, `Product`,
+  `Field`, `Sum`, `SumPayload`, `Sequence`, `Reference`, `Tensor`,
+  `TensorData`, `Stream`, `Opaque`
+- CTN: `parse_document`, `parse_value`, `format_document`, `format_value`
+- CBF: `CBF_MAGIC`, `CBF_HEADER_SIZE`, `CbfHeader`, `EncodeOptions`,
+  `DecodedDocument`, `encode_document`, `encode_value`, `decode_document`,
+  `decode_value`
+- CQL: `query`, `query_one`
 
-### LenDelimited Sub-types
+Implemented CQL is a baseline path engine: `.field`, `[]`, `[index]`,
+negative indexes, `['symbol]`, and `["string"]`.
 
-| Byte | Meaning |
-|------|---------|
-| `0x00` | UTF-8 string |
-| `0x01` | Raw binary blob |
-
----
+See `docs/RFC-001-IMPLEMENTATION.md` for coverage and known gaps.
 
 ## Feature Flags
 
-### `surp-core`
+| Crate | Feature | Effect |
+| --- | --- | --- |
+| `surp-core` | `xxh3` | Select XXH3-64 in the checksum API |
+| `surp-core` | `compat-crc32` | CRC32 checksum API support |
+| `surp-core` | `fast-alloc` | Enable `BumpDecoder` |
+| `surp-core` | `lz4` | LZ4 block compression |
+| `surp-core` | `zstd` | Zstandard block compression |
+| `surp-core` | `snappy` | Snappy block compression |
+| `surp-cli` | `lz4`, `zstd`, `snappy` | Forward compression support to `surp-core` |
+| `surp-io` | `mmap` | Enable `MmapReader` |
+| `surp-compression` | `lz4`, `zstd`, `snappy` | Enable matching compressor adapters |
+| `surp-simd` | `simd-varint` | Enable aarch64 NEON varint boundary prescan |
 
-| Flag | Effect |
-|------|--------|
-| `xxh3` | Use XXH3-64 for checksums (~2× throughput on SIMD CPUs) |
-| `compat-crc32` | CRC32 checksum support for legacy data |
-| `fast-alloc` | `BumpDecoder` with bumpalo arena |
-| `zstd` | Zstd block compression |
-| `lz4` | LZ4 block compression (pure Rust via lz4_flex) |
-| `snappy` | Snappy block compression |
+## Verification Commands
 
-### `surp-io`
-
-| Flag | Effect |
-|------|--------|
-| `mmap` | `MmapReader` for zero-copy file access |
-
-### `surp-simd`
-
-| Flag | Effect |
-|------|--------|
-| `simd-varint` | SIMD varint boundary pre-scan (aarch64 NEON) |
-
----
-
-## Performance
-
-Measured on **Apple M4** (10 cores), Rust 1.92.0, `--release`, 10 iterations per dataset.
-
-### Decode Throughput (MB/s, higher = better)
-
-| Dataset | Surp | JSON | MsgPack | CBOR |
-|---------|-------|------|---------|------|
-| small_objects | 816 | 280 | 240 | 122 |
-| string_heavy | 909 | 348 | 331 | 205 |
-| nested_deep | 359 | 180 | 137 | 88 |
-| binary_blobs | 24,226 | 10,405 | 26,905 | 13,305 |
-| mixed_api_events | 1,111 | 391 | 381 | 216 |
-| numeric_heavy | 813 | 393 | 285 | 135 |
-
-### Encode Throughput (MB/s)
-
-| Dataset | Surp | JSON | MsgPack | CBOR |
-|---------|-------|------|---------|------|
-| small_objects | 983 | 1,072 | 1,100 | 894 |
-| string_heavy | 1,602 | 1,669 | 1,761 | 1,518 |
-| nested_deep | 771 | 917 | 604 | 513 |
-| binary_blobs | 1,825 | 2,871 | 8,437 | 8,265 |
-| mixed_api_events | 1,653 | 1,562 | 1,809 | 1,572 |
-| numeric_heavy | 1,087 | 1,139 | 1,223 | 992 |
-
-### Serialized Size
-
-| Dataset | Surp | Surp+Dedup | JSON | MsgPack | CBOR | Surp/JSON |
-|---------|-------|-------------|------|---------|------|------------|
-| small_objects | 8.6 MB | 12.0 MB | 10.5 MB | 7.8 MB | 7.9 MB | 0.82× |
-| string_heavy | 1.0 MB | 668 KB | 1.1 MB | 926 KB | 927 KB | 0.96× |
-| nested_deep | 1.0 MB | 1.5 MB | 1.2 MB | 835 KB | 835 KB | 0.87× |
-| binary_blobs | 6.4 MB | 6.4 MB | 8.5 MB | 8.5 MB | 8.5 MB | 0.75× |
-| mixed_api_events | 1.9 MB | 2.8 MB | 2.0 MB | 1.8 MB | 1.8 MB | 0.92× |
-| numeric_heavy | 3.7 MB | 3.7 MB | 6.0 MB | 3.5 MB | 3.5 MB | 0.63× |
-
-**Key takeaways:**
-- Surp **decode** is **2–5× faster** than JSON and CBOR for structured data
-- Surp is **smaller than JSON** across all datasets (0.63–0.96×)
-- Binary blobs: Surp stores raw bytes (no base64), achieving 0.75× JSON size
-- Numeric data: Surp varints achieve 0.63× JSON size
-- Dedup overhead makes output larger for small_objects/nested_deep (dict block overhead exceeds savings)
-
----
-
-## Safety & Security
-
-- **No `unsafe` in `surp-core`** — all encoding/decoding is safe Rust
-- **All `unwrap()` calls** are in test code or preceded by bounds checks on fixed-size slices
-- **Resource limits** prevent DoS attacks: nesting depth, memory, block size, string length, item count
-- **Checksum verification** on every block (XXH64)
-- **Compression DoS mitigation**: `max_output` parameter on all decompressors
-- **UTF-8 validation**: all string decoding goes through `std::str::from_utf8`
-- **Fuzz targets** available in `fuzz/fuzz_targets/` for decode, roundtrip, text, and varint
-
----
-
-*Generated from Surp v1.1.0 codebase. See `docs/SPEC.md` for the full wire format specification.*
+```bash
+cargo fmt --all
+cargo test --workspace --all-features
+cargo clippy --workspace --all-features -- -D warnings
+cargo run --manifest-path examples/rust/Cargo.toml --bin v1_roundtrip
+cargo run --manifest-path examples/rust/Cargo.toml --bin derive_struct
+cargo run --manifest-path examples/rust/Cargo.toml --bin text_format
+cargo run --manifest-path examples/rust/Cargo.toml --bin rfc001_ctn_cbf_cql
+```

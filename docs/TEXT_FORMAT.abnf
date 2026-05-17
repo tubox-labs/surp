@@ -60,8 +60,9 @@ escape-code   = %x22        ; "   quotation mark
               / %x74        ; t   tab
               / %x75 4HEXDIG ; uXXXX  Unicode code point
 
-; Raw binary data encoded as base64.
-bytes         = %s"b64#" base64-data ";"
+; Raw binary data encoded as base64. In object fields, the normal field
+; terminator supplies the semicolon after the value.
+bytes         = %s"b64#" base64-data
 
 base64-data   = *( ALPHA / DIGIT / "+" / "/" / "=" )
 
@@ -84,7 +85,7 @@ field         = key WSP-COMMENT ":" WSP-COMMENT value WSP-COMMENT ";"
 
 key           = identifier / string
 
-identifier    = ( ALPHA / "_" ) *( ALPHA / DIGIT / "_" / "-" )
+identifier    = ( ALPHA / "_" ) *( ALPHA / DIGIT / "_" )
 
 ; ---------------------------------------------------------------------------
 ; Type annotations
