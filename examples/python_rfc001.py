@@ -34,6 +34,13 @@ def main() -> None:
     parsed = surp.rfc001.parse_ctn(CTN)
     assert parsed["bindings"][0]["name"] == "alice"
 
+    model = surp.rfc001.parse_ctn_model(CTN)
+    assert isinstance(model, surp.rfc001.RfcDocument)
+    alice = model.binding("alice").value
+    assert alice.kind == "product"
+    assert alice["name"].scalar_value == "Alice"
+    assert alice["tags"][1].scalar_value == "ops"
+
     normalized = surp.rfc001.normalize_ctn(CTN)
     assert "tensor<f32>[2, 2]" in normalized
 
@@ -46,6 +53,10 @@ def main() -> None:
     assert surp.rfc001.cbf_to_ctn(cbf) == decoded["ctn"]
     assert surp.rfc001.query_cbf(cbf, ".name", as_ctn=True) == ['"Alice"']
     assert surp.rfc001.query_cbf(cbf, ".tags[]", as_ctn=True) == ['"admin"', '"ops"']
+    assert [value.scalar_value for value in surp.rfc001.query_cbf_model(cbf, ".tags[]")] == [
+        "admin",
+        "ops",
+    ]
 
     theme = surp.rfc001.query_ctn(CTN, ".settings['theme]")
     assert theme[0]["kind"] == "scalar"

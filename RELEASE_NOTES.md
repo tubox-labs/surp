@@ -1,3 +1,50 @@
+# Surp v1.0.1 Pre-release Notes
+
+Surp `v1.0.1` is staged as a pre-release update for validation. Do not create a
+GitHub release or tag from this entry yet.
+
+## Release Title
+
+Surp v1.0.1 (pre-release)
+
+## Highlights
+
+- Adds JSON-like Rust introspection helpers for v1 `Value` and zero-copy
+  `SurpValue<'_>` without changing the v1 wire format.
+- Adds RFC-001 AST introspection helpers so products, sums, sequences, tensors,
+  documents, and decoded CBF metadata can be inspected at the Rust source of
+  truth.
+- Adds native-backed Python model/view objects for IDE-friendly access:
+  `SurpValue`, `RfcDocument`, `RfcDecodedCbf`, `RfcValue`, and related RFC
+  model classes.
+- Keeps existing `dumps`, `loads`, `dump`, `load`, `parse_ctn`, `decode_cbf`,
+  and query dictionary/list behavior backward compatible.
+- Expands `.pyi` stubs, including a private `_surp_native.pyi`, so mypy and
+  Pyright can resolve the public Python API and native facade.
+- Updates docs, examples, and tests for the new introspection APIs.
+- Packages the Python README and license files directly with wheels and sdists.
+
+## Validation
+
+Validated locally with:
+
+```sh
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace -- -D warnings
+cd surp-python
+../.venv/bin/maturin develop --release
+../.venv/bin/python -m pytest tests/ -v
+../.venv/bin/python -m mypy python/surp
+../.venv/bin/pyright python/surp
+```
+
+## Notes
+
+- This is a pre-release entry only.
+- No release tag has been created.
+- No GitHub release has been created.
+
 # Surp v1.0.0 Release Notes
 
 Surp `v1.0.0` is the first stable release of the Rust-backed Surp serialization

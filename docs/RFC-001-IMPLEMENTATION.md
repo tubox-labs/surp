@@ -42,6 +42,15 @@ Public exports:
 - `decode_document`, `decode_value`
 - `query`, `query_one`
 
+The RFC AST exposes native introspection helpers. `Document` supports
+`binding()`, `binding_value()`, `binding_names()`, `annotation()`, and
+`annotation_names()`. `Value` supports `len()`, `is_empty()`, `get(name)`,
+`get_index(index)`, `contains_key()`, `keys()`, and `values()` over products,
+associations, sequences, struct-style sum payloads, tuple-style sum payloads,
+and `Reference::ById` wrappers. `Product`, `Sum`, `SumPayload`, `Sequence`,
+`Tensor`, `TensorData`, and `Stream` expose matching metadata helpers for their
+owned fields.
+
 ## CTN Coverage
 
 Implemented CTN document features:
@@ -181,9 +190,20 @@ Python functions:
 - `cbf_to_ctn(data)`
 - `query_cbf(data, query, *, as_ctn=False)`
 - `query_ctn(text, query, *, as_ctn=False)`
+- `parse_ctn_model(text)`
+- `decode_cbf_model(data)`
+- `query_cbf_model(data, query)`
+- `query_ctn_model(text, query)`
 
 Python typed dictionaries preserve RFC-specific kinds and scalar types. See
 `docs/PYTHON_API.md` for the exact shape.
+
+The `_model` helpers are additive and return native-backed Python classes:
+`RfcAnnotation`, `RfcField`, `RfcBinding`, `RfcHeader`, `RfcDocument`,
+`RfcDecodedCbf`, and `RfcValue`. They expose the same Rust metadata through
+attributes and helpers such as `RfcDocument.binding_names()`, `RfcValue.keys()`,
+`RfcValue["field"]`, `RfcValue[0]`, `RfcValue.scalar_type`, and
+`RfcValue.scalar_value`.
 
 ## Known Gaps
 

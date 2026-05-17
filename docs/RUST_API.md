@@ -80,7 +80,19 @@ pub enum Value {
 Objects preserve entry order because they are represented as `Vec<(String,
 Value)>`. `Value` has helper methods such as `type_name()`, `is_null()`,
 `as_str()`, `as_uint()`, `as_int()`, `as_float()`, `as_bool()`, `as_array()`,
-and `as_object()`.
+`as_object()`, `as_bytes()`, `len()`, `is_empty()`, `is_scalar()`,
+`is_array()`, `is_object()`, `get(key)`, `get_index(index)`, `contains_key()`,
+`keys()`, `values()`, and `entries()`.
+
+```rust
+let user = Value::Object(vec![
+    ("name".into(), Value::Str("Alice".into())),
+    ("tags".into(), Value::Array(vec![Value::Str("admin".into())])),
+]);
+
+assert_eq!(user.get("name").and_then(Value::as_str), Some("Alice"));
+assert_eq!(user.get("tags").and_then(|tags| tags.get_index(0)).and_then(Value::as_str), Some("admin"));
+```
 
 ### `SurpValue<'a>`
 
@@ -103,6 +115,12 @@ pub enum SurpValue<'a> {
 Call `to_owned_value()` when a decoded value needs to outlive the input bytes.
 Zero-copy decoding works on uncompressed data blocks. Use the owned decode path
 for compressed blocks.
+
+`SurpValue<'a>` mirrors the owned introspection helpers for borrowed data:
+`type_name()`, `is_null()`, `is_scalar()`, `is_array()`, `is_object()`,
+`as_str()`, `as_bytes()`, numeric and bool accessors, `len()`, `get(key)`,
+`get_index(index)`, `contains_key()`, `keys()`, `values()`, `as_array()`, and
+`as_object()`.
 
 ## Encoder
 
