@@ -1,95 +1,209 @@
-# SURP RFC-001 Implementation (Repository Status)
+# RFC-001 Implementation
 
-This document describes the executable RFC-001 implementation introduced in this repository.
+This repository contains an executable RFC-001 implementation under
+`surp_core::rfc001`. It is additive: existing v1 binary/text APIs remain in
+place and RFC-001 lives in a parallel module namespace.
 
-## Scope
+## Source Map
 
-RFC-001 has been added as a **parallel v2 architecture** without breaking existing v1 APIs.
+| File | Role |
+| --- | --- |
+| `surp-core/src/rfc001/ast.rs` | RFC data model: documents, annotations, scalars, products, sums, sequences, maps, references, tensors, streams, opaque values |
+| `surp-core/src/rfc001/ctn.rs` | CTN parser and formatter |
+| `surp-core/src/rfc001/cbf.rs` | CBF encoder/decoder, header, symbol table, segment encoding, CRC64 trailer |
+| `surp-core/src/rfc001/cql.rs` | Baseline CQL path query engine |
+| `surp-cli/src/main.rs` | `rfc-compile`, `rfc-inspect`, and `rfc-query` commands |
+| `surp-python/src/lib.rs` | Native Python `surp.rfc001` bindings |
 
-Implemented in `surp-core/src/rfc001/`:
+## Rust API
 
-- `ast.rs`: Native RFC data model (`Value`, `Scalar`, `Product`, `Sum`, `Tensor`, `Stream`, `Reference`, `Document`).
-- `ctn.rs`: RFC-style CTN parser/formatter (indentation-first syntax, `let`, `@annotations`, product/sum/sequence/map/tensor/stream forms).
-- `cbf.rs`: Segment-tree CBF encoder/decoder with 32-byte header, symbol table support, typed segments, and checksum trailer.
-- `cql.rs`: Baseline CQL path engine (`.field`, `[index]`, `[]`, map-key selectors).
+```rust
+use surp_core::rfc001;
 
-CLI integration in `surp-cli`:
+let doc = rfc001::parse_document("User\n  name = \"Alice\"")?;
+let cbf = rfc001::encode_document(&doc, rfc001::EncodeOptions::default())?;
+let decoded = rfc001::decode_document(&cbf)?;
+let root = decoded.document.effective_root()?;
+let result = rfc001::query(&root, ".name")?;
+assert_eq!(rfc001::format_value(&result[0]), "\"Alice\"");
+# Ok::<(), surp_core::SurpError>(())
+```
 
-- `surp rfc-compile <input.ctn> -o <output.crb>`
-- `surp rfc-inspect <input.crb> [--ctn]`
-- `surp rfc-query <input.crb> '<expr>'`
+Public exports:
 
-## RFC-001 Features Currently Implemented
+- `Document`, `Binding`, `Annotation`
+- `Value`, `Scalar`, `Product`, `Field`, `Sum`, `SumPayload`
+- `Sequence`, `Reference`, `Tensor`, `TensorData`, `Stream`, `Opaque`
+- `parse_document`, `parse_value`
+- `format_document`, `format_value`
+- `CBF_MAGIC`, `CBF_HEADER_SIZE`
+- `CbfHeader`, `EncodeOptions`, `DecodedDocument`
+- `encode_document`, `encode_value`
+- `decode_document`, `decode_value`
+- `query`, `query_one`
 
-### CTN
+## CTN Coverage
 
-- Document-level annotations (`@name [value]`)
-- `let` bindings and root expressions
-- Product literals via indentation:
-  - `TypeName` + indented `field = value`
-  - `struct` anonymous products
-- Sum/enum variants:
-  - `Type :: Variant`
-  - `Type :: Variant(...)`
-  - `Type :: Variant` + indented named payload
-- Sequences:
-  - Inline: `[a, b, c]`
-  - Block: `seq<T>` + indented elements
-- Maps:
-  - Inline: `map<K, V> [k => v]`
-  - Block: `map<K, V>` + indented pairs
-- References:
-  - `&binding`
-  - `ref <value>`
-- Tensor and stream headers with block payload/annotations
-- Typed literals and tagged literals:
-  - integer/float suffixes (`u8`, `i64`, `vi64`, `f32`, `f64`, ...)
-  - tagged quoted forms (`ts"..."`, `uid"..."`, `url"..."`, etc.)
+Implemented CTN document features:
 
-### CBF
+- Document annotations with `@name` and optional scalar values
+- `use ...` statements preserved in the parsed document and formatter
+- `let name = value` bindings
+- Explicit root expressions
+- Root fallback to the last `let` binding when no explicit root exists
+- Line comments with `--`
+- Block comments with `--[[ ... ]]`
+- Shebang-like/comment directive lines starting with `--!`
+- Space indentation; tabs are rejected for indentation
 
-- 32-byte header with RFC-aligned fields:
-  - magic `SURP`
-  - versions, flags, alignment, offsets
-- Segment headers (4-byte compact + 12-byte extended for large payloads)
-- Implemented segment categories:
-  - `PRIMITIVE`, `STRING`, `BYTES`, `SYMBOL`, `STRUCT`, `ENUM`, `SEQUENCE`, `MAP`, `TENSOR`, `REFERENCE`, `STREAM`, `OPAQUE`, `SPECIAL`
-- Special encodings for null/unit/booleans/empty values
-- Sequence/map offset-table encoding for direct element lookup
-- Symbol table block (interned symbols and field/type names)
-- End-of-file checksum trailer (CRC64-ECMA)
-- Reference resolution from CTN `let` bindings at encode-time
+Implemented value forms:
 
-### CQL (Baseline)
+- Products: `TypeName` with indented `field = value`
+- Anonymous products with `struct`
+- Sum variants: `Type :: Variant`, tuple payloads, and named payloads
+- Inline sequences: `[a, b, c]`
+- Parenthesized tuple-like sequences: `(a, b, c)`
+- Block sequences: `seq<T>` with indented elements
+- Inline maps: `map<K, V> [key => value, ...]`
+- Block maps: `map<K, V>` with indented `key => value`
+- Binding references: `&name`
+- Reference-by-id expression wrapper: `ref <value>`
+- Tensors: `tensor<T>[shape]`, `vec<T>[shape]`, and `mat<T>[shape]`
+- Streams: `stream<T>` with annotation-only body
+- Strings, triple-quoted strings, booleans, null, unit
+- Symbols with `'Name`
+- Tagged quoted literals such as `uid"..."`, `ts"..."`, and `url"..."`
+- Bytes as `b64"..."`, compact hex `b"deadbeef"`, or spaced hex `<de ad be ef>`
+- Numeric suffixes including `u8`, `u16`, `u32`, `u64`, `u128`, `i8`,
+  `i16`, `i32`, `i64`, `i128`, `vi32`, `vi64`, `vu32`, `vu64`, `f16`,
+  `bf16`, `f32`, `f64`, `f128`, `dec32`, `dec64`, and `dec128`
+- Decimal and unsupported-width numeric suffixes are preserved as tagged
+  scalar values when they cannot map to the current native scalar set.
 
-- Dot traversal: `.a.b.c`
-- Sequence flatten: `[]`
-- Sequence indexing: `[0]`, `[-1]`
-- Map key selectors: `['theme]`, `["key"]`
+The formatter emits repository-canonical CTN for the supported AST. It is not
+a whitespace-preserving formatter.
 
-## Compatibility and Safety Notes
+## CBF Coverage
 
-- RFC-001 is additive: v1 APIs (`Encoder`, `Decoder`, `text`) are unchanged.
-- RFC-001 modules return the same crate-wide `SurpError` type for uniform handling.
-- Decoder enforces nesting-depth limits during recursive segment decoding.
-- Checksum validation is mandatory in RFC-001 decode path.
+Implemented CBF file structure:
 
-## Known Gaps vs RFC Draft
+- 32-byte header
+- Magic bytes: `SURP`
+- `cbf_version == 1`
+- `ctn_version == 1`
+- Flags for self-describing files, symbol-table presence, and index presence
+- Alignment byte recorded in the header
+- 8-byte schema hash prefix field, currently zero-filled by the encoder
+- Root offset
+- Symbol-table offset
+- Index offset field, currently zero when no index is emitted
+- CRC64-ECMA trailer over all bytes before the trailer
 
-The following are not yet fully implemented:
+Implemented segment behavior:
 
-- Full CSL parser/compiler and witness cryptography pipeline
+- Compact 4-byte segment header with 4-bit type, 4-bit config, and 24-bit payload length
+- 12-byte extended segment header for large payloads
+- Special segments for null, unit, booleans, empty sequence, empty map,
+  empty string, and empty bytes
+- Fixed and varint primitive integer encodings
+- f32 and f64 primitive encodings
+- UTF-8 string and raw bytes segments
+- Symbol table for symbols and field/type names when enabled
+- Product and sum segments
+- Sequence and map segments with offset tables
+- Reference segments
+- Tensor segments for dense f64/i64/u64 and binary blobs
+- Stream segments with annotations
+- Opaque/tagged scalar segments
+
+`encode_document()` resolves CTN binding references before writing CBF. Cyclic
+binding references are rejected.
+
+`decode_document()` validates the CRC64 trailer, decodes symbols if the symbol
+table flag is set, decodes the root segment, and returns a `DecodedDocument`
+containing the header, symbols, and a document whose `root` is populated.
+
+## CQL Coverage
+
+The implemented CQL engine is a baseline structural path evaluator.
+
+Supported selectors:
+
+- `.field`
+- `[]` to flatten sequences or map values
+- `[0]` and other zero-based sequence indexes
+- `[-1]` and other negative sequence indexes
+- `['symbol]` map key selector
+- `["string"]` map key selector
+
+Traversal applies to products, maps/associations, struct-style sum payloads,
+sequences, and `Reference::ById` wrappers. Missing fields/selectors return an
+empty result list rather than an error.
+
+Unsupported CQL syntax returns an error. Pipeline operators such as `where`,
+`select`, `group_by`, projections, joins, and aggregates are not implemented.
+
+## CLI Integration
+
+```bash
+cargo run -p surp-cli -- rfc-compile examples/data/user.ctn -o /tmp/user.crb
+cargo run -p surp-cli -- rfc-inspect /tmp/user.crb --ctn
+cargo run -p surp-cli -- rfc-query /tmp/user.crb ".tags[-1]"
+```
+
+Command behavior:
+
+- `rfc-compile` parses CTN and writes CBF.
+- `--no-symtab` disables symbol-table generation and rejects symbol values.
+- `--alignment` stores the alignment hint byte in the CBF header.
+- `rfc-inspect` prints header metadata and symbol count.
+- `rfc-inspect --ctn` also writes decoded CTN to stdout or `--output`.
+- `rfc-query` prints `null` for no results, a single CTN value for one result,
+  or a CTN sequence for multiple results.
+
+## Python Integration
+
+```python
+from surp import rfc001
+
+cbf = rfc001.compile_ctn('User\n  name = "Alice"')
+decoded = rfc001.decode_cbf(cbf)
+assert decoded["header"]["magic"] == "SURP"
+assert rfc001.query_cbf(cbf, ".name", as_ctn=True) == ['"Alice"']
+```
+
+Python functions:
+
+- `parse_ctn(text)`
+- `normalize_ctn(text)`
+- `compile_ctn(text, *, with_symtab=True, alignment=0)`
+- `decode_cbf(data)`
+- `cbf_to_ctn(data)`
+- `query_cbf(data, query, *, as_ctn=False)`
+- `query_ctn(text, query, *, as_ctn=False)`
+
+Python typed dictionaries preserve RFC-specific kinds and scalar types. See
+`docs/PYTHON_API.md` for the exact shape.
+
+## Known Gaps
+
+The following RFC draft areas are not fully implemented in this repository:
+
+- Full CSL parser/compiler
+- Witness cryptography pipeline
 - Compact mode schema-driven binary elision
-- Full CQL pipeline ops (`where`, `select`, `group_by`, aggregates)
-- Stream framing (`CRFM` chunk protocol)
-- Rich tensor quantization/sparse formats
-- CPC RPC framework and database page format
+- Full CQL pipeline operations
+- Stream chunk framing protocol (`CRFM`)
+- Rich tensor quantization and sparse tensor formats
+- CPC RPC framework
+- Database page format
 - Formal migration DSL execution
+- CBF index generation and random-access index lookup
+- Non-zero schema hash prefix generation
 
-## Design Decision: Parallel V2 Path
+## Compatibility Notes
 
-RFC-001 is intentionally built as `surp_core::rfc001::*` so teams can:
-
-1. Keep v1 production workflows stable.
-2. Incrementally adopt RFC-001 capabilities.
-3. Benchmark and harden v2 before defaulting to it.
+- RFC-001 CBF is not the same wire format as v1 block-framed Surp files.
+- v1 APIs remain stable under `Encoder`, `Decoder`, `Value`, and `text`.
+- RFC-001 errors use the shared `surp_core::SurpError` type.
+- RFC-001 Python errors are exposed as `surp.SurpRfcError`.

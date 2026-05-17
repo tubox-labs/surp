@@ -2,7 +2,7 @@
 
 **A compact, canonical binary serializer and human-readable alternative to JSON, written in Rust.**
 
-[![CI](https://github.com/surp-format/surp/actions/workflows/ci.yml/badge.svg)](https://github.com/surp-format/surp/actions)
+[![CI](https://github.com/tubox-labs/surp/actions/workflows/ci.yml/badge.svg)](https://github.com/tubox-labs/surp/actions)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 
 ## Overview
@@ -62,14 +62,14 @@ assert_eq!(decoded.to_owned_value(), value);
 | `surp-derive` | `#[derive(Surp)]` proc-macro with stable field IDs |
 | `surp-io` | Async Tokio adapters, framed streams |
 | `surp-cli` | CLI: inspect, pretty-print, convert |
-| `surp-compression` | Pluggable zstd/snappy compression |
+| `surp-compression` | Pluggable zstd/lz4/snappy compression |
 | `surp-ffi` | C FFI bindings |
-| `surp-simd` | NEON/SSE2 SIMD acceleration (byte scanning) |
+| `surp-simd` | Byte scanning and varint helpers with scalar fallback and optional aarch64 NEON |
 
-## Python Implementation
+## Python Package
 
-A pure-Python implementation is included in `python/surp/`, providing
-full encode/decode compatibility with the Rust implementation:
+A native Python package is included in `surp-python/`, backed by the Rust
+implementation and published as `surp`:
 
 ```python
 import surp
@@ -82,16 +82,18 @@ obj = surp.decode(data)
 print(obj)  # {'name': 'Alice', 'age': 30, 'active': True}
 
 # Human-readable text format
-text = surp.pretty_print(surp.Value.from_python(obj))
+text = surp.pretty_print(obj)
 print(text)
 ```
 
-Cross-language interop verified: Rust-encoded files decode correctly in
-Python and vice versa.
+Cross-language interop is verified with the Rust CLI and the native Python
+package.
 
 ```bash
-# Run Python tests
-cd python && python -m pytest tests/ -v
+# Build and test the Python package
+cd surp-python
+maturin develop --release
+python -m pytest tests/ -v
 ```
 
 ## CLI Usage
@@ -132,8 +134,24 @@ surp rfc-inspect output.crb --ctn
 surp rfc-query output.crb ".user.email"
 ```
 
+Python exposes the same path:
+
+```python
+from surp import rfc001
+
+cbf = rfc001.compile_ctn('User\n  email = "alice@example.com"')
+print(rfc001.query_cbf(cbf, ".email", as_ctn=True))
+```
+
 Implementation details and current feature coverage:
 `docs/RFC-001-IMPLEMENTATION.md`
+
+Detailed guides:
+
+- Rust API: `docs/RUST_API.md`
+- Python API: `docs/PYTHON_API.md`
+- CLI: `docs/CLI.md`
+- Runnable examples: `docs/EXAMPLES.md`
 
 ## Derive Macro
 

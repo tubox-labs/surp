@@ -266,11 +266,16 @@ This reduces dictionary overhead for datasets with structured/hierarchical key n
 
 ## 9. Reference/Dedup
 
-The Reference wire type (0x0A) encodes a varint index into a per-block reference table. This allows deduplication of:
-- Repeated strings (via string dictionary)
-- Repeated subtrees (via structural hash → reference table)
+The Reference wire type (0x0A) currently encodes a varint index into the
+per-block string dictionary described in section 8. The implemented encoder
+uses it only for repeated UTF-8 strings when `Encoder::enable_dedup()` is set.
 
 Reference IDs are scoped to a single block. Cross-block references are not supported (blocks are self-contained).
+
+Structural subtree deduplication is not implemented in the v1 encoder or
+decoder. Future versions may add a separate reference table for that behavior,
+but files written by the current implementation must treat references as
+string-dictionary references.
 
 ## 10. Streaming vs Block Mode
 
@@ -286,7 +291,7 @@ Reference IDs are scoped to a single block. Cross-block references are not suppo
 
 ## 11. Security Considerations
 
-See [SECURITY.md](SECURITY.md) for the full threat model.
+See [SECURITY.md](../SECURITY.md) for the full threat model.
 
 Key points:
 - All lengths are bounds-checked against configurable limits.
@@ -309,6 +314,9 @@ binary small and compilation fast.
 | `xxh3`        | —             | Use XXH3-64 for checksums (faster SIMD path) |
 | `compat-crc32`| `crc32fast`   | CRC32 checksum support for legacy interop |
 | `fast-alloc`  | `bumpalo`     | Per-block bump allocator via `BumpDecoder` |
+| `lz4`         | `lz4_flex`    | LZ4 block compression support |
+| `zstd`        | `zstd`        | Zstandard block compression support |
+| `snappy`      | `snap`        | Snappy block compression support |
 
 ### 12.2 surp-io features
 
@@ -338,7 +346,7 @@ grammar (RFC 5234).
 
 Key differences from JSON:
 - Object fields terminated by `;` not `,`
-- Binary literals: `b64#<base64>;`
+- Binary literals: `b64#<base64>`; object fields still use the normal field `;`
 - Optional type annotations: `42::u32`
 - Comments: `// line` and `/* block */`
 - Signed integers use explicit `+`/`-` prefix

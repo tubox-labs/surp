@@ -282,7 +282,7 @@ fn gen_mixed_api_events_n(n: usize) -> Dataset {
         "rust-lang/rust",
         "tokio-rs/tokio",
         "serde-rs/serde",
-        "surp-format/surp",
+        "tubox-labs/surp",
         "hyperium/hyper",
         "actix/actix-web",
         "diesel-rs/diesel",

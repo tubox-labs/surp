@@ -1,0 +1,9 @@
+[package]
+name = "surp-examples"
+version = "1.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+surp-core = { path = "../../surp-core" }
+surp-derive = { path = "../../surp-derive" }

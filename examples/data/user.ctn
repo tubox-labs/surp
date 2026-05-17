@@ -1,0 +1,14 @@
+@surp v1
+@encoding cbf
+
+let alice = User
+  id = uid"550e8400-e29b-41d4-a716-446655440000"
+  name = "Alice"
+  role = 'Admin
+  tags = ["admin", "ops"]
+  settings = map<str, str> ["theme" => "dark", 'region => "us"]
+  matrix = tensor<f32>[2, 2]
+    [1.0f32, 2.0f32]
+    [3.0f32, 4.0f32]
+
+&alice

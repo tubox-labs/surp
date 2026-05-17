@@ -8,18 +8,19 @@ members = [
     "surp-ffi",
     "surp-simd",
     "surp-python",
+    "examples/rust",
     "bench",
 ]
 exclude = ["fuzz"]
 resolver = "3"
 
 [workspace.package]
-version = "1.1.3"
+version = "1.0.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["Pawan Kumar"]
-repository = "https://github.com/axiomchronicles/surp"
-homepage = "https://github.com/axiomchronicles/surp"
+repository = "https://github.com/tubox-labs/surp"
+homepage = "https://github.com/tubox-labs/surp"
 documentation = "https://docs.rs/surp-core"
 description = "A compact, canonical binary serializer and human-readable alternative to JSON"
 readme = "README.md"
@@ -28,12 +29,12 @@ categories = ["encoding", "data-structures", "parser-implementations"]
 rust-version = "1.85.0"
 
 [workspace.dependencies]
-surp-core = { path = "surp-core", version = "1.1.3" }
-surp-derive = { path = "surp-derive", version = "1.1.3" }
-surp-compression = { path = "surp-compression", version = "1.1.3" }
-surp-io = { path = "surp-io", version = "1.1.3" }
-surp-ffi = { path = "surp-ffi", version = "1.1.3" }
-surp-simd = { path = "surp-simd", version = "1.1.3" }
+surp-core = { path = "surp-core", version = "1.0.0" }
+surp-derive = { path = "surp-derive", version = "1.0.0" }
+surp-compression = { path = "surp-compression", version = "1.0.0" }
+surp-io = { path = "surp-io", version = "1.0.0" }
+surp-ffi = { path = "surp-ffi", version = "1.0.0" }
+surp-simd = { path = "surp-simd", version = "1.0.0" }
 thiserror = "2"
 # XXH3 rationale: https://xxhash.com/ — XXH3 offers ~2x throughput over XXH64
 xxhash-rust = { version = "0.8", features = ["xxh64", "xxh3"] }

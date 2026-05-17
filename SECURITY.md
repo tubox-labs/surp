@@ -55,7 +55,7 @@ cargo +nightly fuzz run fuzz_decode -- -max_total_time=3600
 
 ### Reporting Vulnerabilities
 
-If you discover a security vulnerability, please report it privately via GitHub Security Advisories or email to [security@surp-format.org].
+If you discover a security vulnerability, please report it privately via GitHub Security Advisories for `tubox-labs/surp`.
 
 Do NOT open a public issue for security vulnerabilities.
 
