@@ -2,6 +2,7 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use crous_core::block::BlockReader;
 use crous_core::checksum::compute_xxh64;
 use crous_core::header::{FileHeader, HEADER_SIZE};
+use crous_core::rfc001;
 use crous_core::wire::{BlockType, CompressionType};
 use crous_core::{Decoder, Encoder, Limits, Value};
 use std::fs;
@@ -58,6 +59,15 @@ enum Commands {
 
     /// Benchmark encode/decode throughput from JSON input.
     Bench(BenchArgs),
+
+    /// Compile RFC-001 CTN to RFC-001 CBF (.crb).
+    RfcCompile(RfcCompileArgs),
+
+    /// Inspect RFC-001 CBF header/symbol metadata and optionally decode CTN.
+    RfcInspect(RfcInspectArgs),
+
+    /// Execute a baseline RFC-001 CQL path query over a .crb file.
+    RfcQuery(RfcQueryArgs),
 }
 
 #[derive(Args, Debug)]
@@ -214,6 +224,51 @@ struct BenchArgs {
     compression: CompressionArg,
 }
 
+#[derive(Args, Debug)]
+struct RfcCompileArgs {
+    /// Input RFC-001 CTN file path (use '-' for stdin).
+    file: PathBuf,
+
+    /// Output path (default: input path with .crb extension).
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+
+    /// Disable symbol table generation.
+    #[arg(long = "no-symtab", action = ArgAction::SetTrue)]
+    no_symtab: bool,
+
+    /// Header alignment hint (0=no alignment, 4=16B, 6=64B, 7=128B).
+    #[arg(long, default_value_t = 0)]
+    alignment: u8,
+}
+
+#[derive(Args, Debug)]
+struct RfcInspectArgs {
+    /// Input RFC-001 CBF file path (use '-' for stdin).
+    file: PathBuf,
+
+    /// Decode and print CTN representation.
+    #[arg(long, action = ArgAction::SetTrue)]
+    ctn: bool,
+
+    /// Output path for CTN when --ctn is used (default: stdout).
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+struct RfcQueryArgs {
+    /// Input RFC-001 CBF file path (use '-' for stdin).
+    file: PathBuf,
+
+    /// CQL expression (baseline path syntax).
+    query: String,
+
+    /// Output path (default: stdout).
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+}
+
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum ColorChoice {
     Auto,
@@ -348,6 +403,9 @@ fn main() {
         Commands::Decode(args) => cmd_decode(&ui, &args),
         Commands::Validate(args) => cmd_validate(&ui, &args),
         Commands::Bench(args) => cmd_bench(&ui, &args),
+        Commands::RfcCompile(args) => cmd_rfc_compile(&ui, &args),
+        Commands::RfcInspect(args) => cmd_rfc_inspect(&ui, &args),
+        Commands::RfcQuery(args) => cmd_rfc_query(&ui, &args),
     };
 
     if let Err(err) = result {
@@ -430,6 +488,76 @@ fn cmd_decode(ui: &Ui, args: &DecodeArgs) -> CliResult<()> {
         output: args.output.clone(),
     };
     cmd_pretty(ui, &pretty_args)
+}
+
+fn cmd_rfc_compile(ui: &Ui, args: &RfcCompileArgs) -> CliResult<()> {
+    let text = read_input_text(&args.file)?;
+    let doc = rfc001::parse_document(&text)?;
+    let bytes = rfc001::encode_document(
+        &doc,
+        rfc001::EncodeOptions {
+            with_symtab: !args.no_symtab,
+            alignment: args.alignment,
+        },
+    )?;
+
+    let out_path = match &args.output {
+        Some(path) => path.clone(),
+        None => derive_output_path(&args.file, "crb")?,
+    };
+
+    write_binary_to_path(&out_path, &bytes)?;
+    ui.success(format!(
+        "Wrote {} bytes to {}",
+        bytes.len(),
+        out_path.display()
+    ));
+    Ok(())
+}
+
+fn cmd_rfc_inspect(_ui: &Ui, args: &RfcInspectArgs) -> CliResult<()> {
+    let data = read_input_bytes(&args.file)?;
+    let decoded = rfc001::decode_document(&data)?;
+
+    println!("File: {}", display_path(&args.file));
+    println!("Size: {} bytes", data.len());
+    println!("Magic: {}", String::from_utf8_lossy(&rfc001::CBF_MAGIC));
+    println!("CBF version: {}", decoded.header.cbf_version);
+    println!("CTN version: {}", decoded.header.ctn_version);
+    println!("Flags: 0x{:02x}", decoded.header.flags);
+    println!("  self_describing: {}", decoded.header.self_describing());
+    println!("  has_symtab:      {}", decoded.header.has_symtab());
+    println!("  has_index:       {}", decoded.header.has_index());
+    println!("Alignment hint: {}", decoded.header.alignment);
+    println!("Root offset: {}", decoded.header.root_offset);
+    println!("Symbol count: {}", decoded.symbols.len());
+
+    if args.ctn {
+        let text = rfc001::format_document(&decoded.document);
+        write_text_output(args.output.as_ref(), text.as_bytes())?;
+    }
+
+    Ok(())
+}
+
+fn cmd_rfc_query(_ui: &Ui, args: &RfcQueryArgs) -> CliResult<()> {
+    let data = read_input_bytes(&args.file)?;
+    let decoded = rfc001::decode_document(&data)?;
+    let root = decoded.document.effective_root()?;
+
+    let results = rfc001::query(&root, &args.query)?;
+    let rendered = if results.is_empty() {
+        "null".to_string()
+    } else if results.len() == 1 {
+        rfc001::format_value(&results[0])
+    } else {
+        rfc001::format_value(&rfc001::Value::Sequence(rfc001::Sequence {
+            elem_type: None,
+            items: results,
+        }))
+    };
+
+    write_text_output(args.output.as_ref(), rendered.as_bytes())
 }
 
 fn cmd_to_json(_ui: &Ui, args: &ToJsonArgs) -> CliResult<()> {

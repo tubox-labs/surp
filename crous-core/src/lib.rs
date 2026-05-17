@@ -29,6 +29,7 @@ pub mod encoder;
 pub mod error;
 pub mod header;
 pub mod limits;
+pub mod rfc001;
 pub mod text;
 pub mod traits;
 pub mod value;
