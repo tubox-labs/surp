@@ -13,7 +13,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.2.0] - 2026-03-24
+## [1.1.3] - 2026-05-17
+
+### Added
+
+- Legacy Python package metadata under `python-crous/` for the final `crous`
+  package release. Version `1.1.3` emits the requested setup-time deprecation
+  warning and depends on `surp==1.1.3`.
+- Release notes for the renamed `surp` project and GitHub release publishing
+  under `tubox-labs/surp`.
+
+### Changed
+
+- Renamed the project from `crous` to `surp` across crates, packages, CLI,
+  FFI symbols, workflows, benchmarks, and documentation.
+- Updated the Python package, native extension, and pure-Python module version
+  metadata to `1.1.3`.
+
+### Removed
+
+- Removed the legacy standard binary header from the file format. Encoded
+  data now starts directly with the block stream header expected by the
+  standard format.
+
+### Breaking Changes
+
+- Existing `crous` imports, package names, repository URLs, and binary names
+  should migrate to `surp`.
+- Binary payloads that still include the legacy binary header are no longer the
+  standard format.
+
+## [1.1.2] - 2026-03-10
 
 ### Security
 
@@ -60,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Invalid reference behavior**: Code relying on silent UInt fallback for invalid references will now receive an error. Update error handling to expect `InvalidReference` errors.
 - **Python API**: Complete rewrite of Python bindings. Old `encode()`/`decode()` functions replaced with `dumps()`/`loads()`/`dump()`/`load()`. Update import statements and function calls.
 
-## [1.1.2] - 2026-03-10
+## [1.1.1] - 2026-03-10
 
 ### Added
 - Initial implementation of `surp-core` with encoder/decoder
@@ -140,5 +170,5 @@ Initial release.
 - [ ] Run `cargo audit`
 - [ ] Verify cross-language interop (Rust↔Python)
 - [ ] Review any new `unsafe` code
-- [ ] Tag release: `git tag v1.1.0`
+- [ ] Tag release: `git tag v1.1.3`
 - [ ] Publish: `cargo publish -p surp-core && cargo publish -p surp-derive && ...`
