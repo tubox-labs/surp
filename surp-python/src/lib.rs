@@ -1899,7 +1899,7 @@ impl SurpDecoder {
 ///         obj = surp.load(f)
 #[pymodule]
 fn _surp_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", "1.0.1")?;
+    m.add("__version__", "1.0.2")?;
 
     // Exception hierarchy
     m.add("SurpError", m.py().get_type::<SurpError>())?;

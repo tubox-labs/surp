@@ -15,6 +15,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [1.0.2] - 2026-05-18
+
+This patch release fixes Python 3.14 model annotation handling, improves model
+typing for static analyzers, and adds the missing v1 Surp decode companion for
+model instances.
+
+### Added
+
+- Added `SurpModel.from_surp(data, *, validate=True)` as the inverse of
+  `SurpModel.to_surp()` for stable v1 Surp bytes encoded from a model's plain
+  dictionary form.
+- Added regression coverage for the v1 model convenience round-trip.
+
+### Changed
+
+- Reworked `surp.model` developer docstrings into raw reStructuredText-style
+  docstrings with explicit signatures, arguments, return details, and examples
+  following the repository docstring skill format.
+- Updated Python API docs and examples to show model round-trips through
+  `to_surp()` and `from_surp()`.
+- Updated workspace, Python package, benchmark, and example version metadata to
+  `1.0.2`.
+
+### Fixed
+
+- Fixed Python 3.14 lazy class annotations so model fields declared without
+  `from __future__ import annotations` are collected correctly by
+  `SurpModelMeta`.
+- Fixed Pylance/Pyright `reportInvalidTypeForm` warnings for public model type
+  markers such as `Int64`, `Str`, and `SeqOf[Str]` by making the shipped stubs
+  valid type expressions while preserving runtime marker behavior.
+
+### Validation
+
+- `python3 -m py_compile surp-python/python/surp/model/*.py`
+- `PYTHONPATH=surp-python/python /Users/kuroyami/Pyprojects/Testing/env/bin/python -m pytest surp-python/tests/ -q`
+- `python examples/python_v1.py`
+- `PYTHONPATH=surp-python/python .venv/bin/pyright surp-python/python/surp/model examples/python_v1.py`
+- `cargo fmt --all -- --check`
+- `cargo test --workspace --all-features`
+- `git diff --check`
+
 ## [1.0.1] - 2026-05-17
 
 This patch release promotes the staged `v1.0.1` API work, expands release
