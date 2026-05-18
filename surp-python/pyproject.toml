@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "surp"
-version = "1.0.1"
+version = "1.0.2"
 description = "Native Rust-backed Surp encoder/decoder with RFC-001 CTN/CBF/CQL support"
 readme = "README.md"
 requires-python = ">=3.9"

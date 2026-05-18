@@ -1,3 +1,63 @@
+# Surp v1.0.2 Release Notes
+
+Surp `v1.0.2` is a patch release for the Python `surp.model` layer. It fixes
+Python 3.14 annotation collection, resolves invalid type-form warnings in the
+public model stubs, adds the missing stable v1 model decode path, and refreshes
+developer docstrings for the affected model APIs.
+
+## Release Title
+
+Surp v1.0.2
+
+## Highlights
+
+- Fixes `SurpModelMeta` on Python 3.14, where ordinary class annotations may be
+  stored lazily and were not always visible through the class namespace during
+  model creation.
+- Fixes Pylance/Pyright invalid type-form warnings for public model markers
+  such as `Int64`, `Str`, and `SeqOf[Str]` by making the shipped stubs valid
+  type expressions.
+- Adds `SurpModel.from_surp(data, *, validate=True)` as the inverse of
+  `SurpModel.to_surp()` for stable v1 Surp bytes.
+- Keeps CTN/CBF model decode behavior unchanged while adding the v1 dictionary
+  convenience decode path.
+- Rewrites affected `surp.model` function and class docstrings as raw
+  reStructuredText-style developer docstrings with explicit signatures and
+  examples.
+- Updates Python API docs, Python package README, and the v1 Python example for
+  `to_surp()` / `from_surp()` model round-trips.
+- Updates Rust workspace, Python package, example, and benchmark version
+  metadata to `1.0.2`.
+
+## Benchmark Artifacts
+
+No new benchmark artifacts are added in this patch. The latest committed full
+benchmark run remains the `v1.0.1` artifact set under
+`docs/assets/bench/v1.0.1`.
+
+## Validation
+
+Validated locally with:
+
+```sh
+python3 -m py_compile surp-python/python/surp/model/*.py
+PYTHONPATH=surp-python/python /Users/kuroyami/Pyprojects/Testing/env/bin/python -m pytest surp-python/tests/ -q
+python examples/python_v1.py
+PYTHONPATH=surp-python/python .venv/bin/pyright surp-python/python/surp/model examples/python_v1.py
+cargo fmt --all -- --check
+cargo test --workspace --all-features
+git diff --check
+```
+
+## Notes
+
+- Release tag: `v1.0.2`
+- GitHub release title: `Surp v1.0.2`
+- The release notes used by `gh release create` live at
+  `.github/releases/v1.0.2.md`.
+- v1 wire compatibility is unchanged.
+- RFC-001 remains additive and separate from v1 `.surp` files.
+
 # Surp v1.0.1 Release Notes
 
 Surp `v1.0.1` is a patch release for the Rust-backed Surp serialization
