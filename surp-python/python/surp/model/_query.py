@@ -6,6 +6,17 @@ from .exceptions import SurpQueryError
 
 
 def query(instance: Any, expr: str) -> list[Any]:
+    r"""query(instance, expr) -> list[Any]
+
+    Run an RFC-001 CQL expression against a model instance.
+
+    The instance is encoded to CBF first so the query uses the same native CQL
+    engine as ``surp.rfc001.query_cbf``.
+
+    Args:
+        instance (Any): Model instance to query.
+        expr (str): Baseline CQL path expression.
+    """
     try:
         from surp import rfc001
 
@@ -16,6 +27,10 @@ def query(instance: Any, expr: str) -> list[Any]:
 
 
 def query_one(instance: Any, expr: str) -> Any:
+    r"""query_one(instance, expr) -> Any
+
+    Run a CQL expression and require exactly one result.
+    """
     results = query(instance, expr)
     if not results:
         raise SurpQueryError(f"query returned no results: {expr}")
@@ -25,6 +40,10 @@ def query_one(instance: Any, expr: str) -> Any:
 
 
 def _plain(value: dict[str, Any]) -> Any:
+    r"""_plain(value) -> Any
+
+    Convert RFC value dictionaries returned by CQL into plain Python data.
+    """
     kind = value.get("kind")
     if kind == "scalar":
         return value.get("value")

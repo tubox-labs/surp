@@ -32,6 +32,19 @@ from .types import (
 
 
 def generate_model_stubs(*classes: type) -> str:
+    r"""generate_model_stubs(*classes) -> str
+
+    Generate static ``.pyi`` constructor stubs for model classes.
+
+    The generated stubs expose plain Python value types, not runtime Surp
+    markers, so editors can understand model initialization.
+
+    Args:
+        *classes (type): Model classes to include in the generated stub text.
+
+    Returns:
+        str: Complete ``.pyi`` source text.
+    """
     lines = [
         "from __future__ import annotations",
         "",
@@ -54,10 +67,18 @@ def generate_model_stubs(*classes: type) -> str:
 
 
 def write_model_stubs(path: str | Path, *classes: type) -> None:
+    r"""write_model_stubs(path, *classes) -> None
+
+    Write generated model stubs to ``path`` using UTF-8.
+    """
     Path(path).write_text(generate_model_stubs(*classes), encoding="utf-8")
 
 
 def _init_params(cls: Any) -> list[str]:
+    r"""_init_params(cls) -> list[str]
+
+    Return typed keyword-only ``__init__`` parameters for a model class.
+    """
     params: list[str] = []
     for name, field in cls.__surp_fields__.items():
         annotation = _python_type_expr(field.rfc_type)
@@ -67,6 +88,10 @@ def _init_params(cls: Any) -> list[str]:
 
 
 def _python_type_expr(annotation: Any) -> str:
+    r"""_python_type_expr(annotation) -> str
+
+    Convert a Surp annotation descriptor to a Python type expression.
+    """
     if isinstance(annotation, _ForwardRef):
         return _quote_type(annotation.name)
     if isinstance(annotation, _TaggedSpec):
@@ -104,6 +129,10 @@ def _python_type_expr(annotation: Any) -> str:
 
 
 def _scalar_type(annotation: _ScalarSentinel) -> str:
+    r"""_scalar_type(annotation) -> str
+
+    Map a scalar marker to the Python value type used by callers.
+    """
     if annotation is Str or annotation is Symbol:
         return "str"
     if annotation is Bool:
@@ -120,10 +149,18 @@ def _scalar_type(annotation: _ScalarSentinel) -> str:
 
 
 def _quote_type(name: str) -> str:
+    r"""_quote_type(name) -> str
+
+    Quote a forward type name for generated stub output.
+    """
     return f'"{name}"'
 
 
 def _is_symbol_enum(annotation: Any) -> bool:
+    r"""_is_symbol_enum(annotation) -> bool
+
+    Return true for ``SurpSymbolEnum`` subclasses.
+    """
     return isinstance(annotation, type) and issubclass(annotation, Enum) and hasattr(
         annotation, "__surp_symbol_enum__"
     )

@@ -99,7 +99,9 @@ class User(SurpModel):
 
 user = User(name="Alice", active=True, tags=["admin"])
 cbf = user.to_cbf()
+data = user.to_surp()
 assert User.from_cbf(cbf) == user
+assert User.from_surp(data) == user
 ```
 
 ## Typing

@@ -27,6 +27,15 @@ class FieldInfo:
     binding: str | None
 
 class Field:
+    def __new__(
+        cls,
+        *,
+        required: bool = True,
+        default: Any = ...,
+        default_factory: Callable[[], Any] | None = None,
+        doc: str | None = None,
+        binding: str | None = None,
+    ) -> Any: ...
     def __init__(
         self,
         *,
@@ -62,6 +71,8 @@ class SurpModel:
     def from_cbf(cls, data: bytes, *, validate: bool = True) -> Any: ...
     @classmethod
     def from_rfc_value(cls, value: Any, *, validate: bool = True) -> Any: ...
+    @classmethod
+    def from_surp(cls, data: bytes, *, validate: bool = True) -> Any: ...
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, validate: bool = True) -> Any: ...
     def query(self, expr: str) -> list[Any]: ...

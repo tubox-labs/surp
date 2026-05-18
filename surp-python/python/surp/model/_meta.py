@@ -31,6 +31,24 @@ _BUILTIN_REJECTS = {str, int, float, bool, bytes, list, dict, tuple, set}
 
 
 class SurpModelMeta(type):
+    r"""SurpModelMeta(name, bases, namespace, **kwargs) -> type
+
+    Metaclass that turns Surp model annotations into runtime field metadata.
+
+    The metaclass is intentionally strict: every declared field must use a
+    Surp type marker annotation and a ``Field(...)`` descriptor. During class
+    creation it resolves Python 3.14 lazy annotations, validates RFC-001 type
+    descriptors, registers concrete models, and prepares an inspectable
+    keyword-only constructor signature.
+
+    Examples::
+
+        >>> class User(SurpModel):
+        ...     name: Str = Field(required=True)
+        >>> User.__surp_fields__["name"].rfc_type.describe()
+        'str'
+    """
+
     def __new__(
         mcls,
         name: str,
@@ -38,6 +56,10 @@ class SurpModelMeta(type):
         namespace: dict[str, Any],
         **kwargs: Any,
     ) -> type:
+        r"""__new__(mcls, name, bases, namespace, **kwargs) -> type
+
+        Create a Surp model class and collect validated field definitions.
+        """
         cls: Any = super().__new__(mcls, name, bases, namespace, **kwargs)
         if namespace.get("__surp_base__", False):
             cls.__surp_fields__ = {}
@@ -88,10 +110,25 @@ class SurpModelMeta(type):
 
 
 def _resolved_annotations(namespace: dict[str, Any], cls: type) -> dict[str, Any]:
-    raw = namespace.get("__annotations__", {})
+    r"""_resolved_annotations(namespace, cls) -> dict[str, Any]
+
+    Return class-local annotations with Python 3.14 lazy annotation support.
+
+    Python 3.14 stores ordinary class annotations lazily instead of always
+    materializing ``__annotations__`` in the class namespace. ``annotationlib``
+    is therefore used when ``namespace`` has no eager annotations. String
+    annotations are still evaluated against the model module and class
+    namespace so existing ``from __future__ import annotations`` files retain
+    their behavior.
+    """
     module = sys.modules.get(cls.__module__)
     globalns = dict(vars(module)) if module is not None else {}
     localns = dict(namespace)
+    raw = namespace.get("__annotations__", {}) or _annotationlib_annotations(
+        cls,
+        globalns,
+        localns,
+    )
     out: dict[str, Any] = {}
     for name, annotation in raw.items():
         if isinstance(annotation, str):
@@ -99,12 +136,52 @@ def _resolved_annotations(namespace: dict[str, Any], cls: type) -> dict[str, Any
                 out[name] = eval(annotation, globalns, localns)
             except Exception:
                 out[name] = _ForwardRef(annotation.strip("\"'"))
+        elif isinstance(getattr(annotation, "__forward_arg__", None), str):
+            forward_arg = annotation.__forward_arg__.strip("\"'")
+            try:
+                out[name] = eval(forward_arg, globalns, localns)
+            except Exception:
+                out[name] = _ForwardRef(forward_arg)
         else:
             out[name] = annotation
     return out
 
 
+def _annotationlib_annotations(
+    cls: type,
+    globalns: dict[str, Any],
+    localns: dict[str, Any],
+) -> dict[str, Any]:
+    r"""_annotationlib_annotations(cls, globalns, localns) -> dict[str, Any]
+
+    Read Python 3.14 lazy class annotations when available.
+
+    Returns an empty dictionary on older Python versions or when annotation
+    extraction fails, leaving the caller to report the normal model definition
+    errors.
+    """
+    try:
+        import annotationlib
+    except Exception:
+        return {}
+    try:
+        return dict(
+            annotationlib.get_annotations(
+                cls,
+                globals=globalns,
+                locals=localns,
+                format=annotationlib.Format.FORWARDREF,
+            )
+        )
+    except Exception:
+        return {}
+
+
 def _signature_for(fields: dict[str, FieldInfo]) -> inspect.Signature:
+    r"""_signature_for(fields) -> inspect.Signature
+
+    Build the keyword-only ``inspect.Signature`` exposed by model classes.
+    """
     params = []
     for name, field in fields.items():
         default: Any = inspect.Parameter.empty
@@ -123,6 +200,10 @@ def _signature_for(fields: dict[str, FieldInfo]) -> inspect.Signature:
 
 
 def _validate_annotation(annotation: Any, *, owner: type, field_name: str) -> None:
+    r"""_validate_annotation(annotation, *, owner, field_name) -> None
+
+    Validate that an annotation is a supported Surp RFC-001 descriptor.
+    """
     if annotation in _BUILTIN_REJECTS:
         raise SurpModelDefinitionError(
             f"{owner.__name__}.{field_name} uses Python built-in type {annotation!r}; "
@@ -181,18 +262,30 @@ def _validate_annotation(annotation: Any, *, owner: type, field_name: str) -> No
 
 
 def _is_scalar_like(annotation: Any) -> bool:
+    r"""_is_scalar_like(annotation) -> bool
+
+    Return true for annotations allowed as RFC-001 association keys.
+    """
     return isinstance(annotation, (_ScalarSentinel, _TaggedSpec, _ForwardRef)) or _is_surp_symbol_enum(
         annotation
     )
 
 
 def _is_surp_symbol_enum(annotation: Any) -> bool:
+    r"""_is_surp_symbol_enum(annotation) -> bool
+
+    Return true for enums declared as Surp symbol enums.
+    """
     return isinstance(annotation, type) and issubclass(annotation, Enum) and hasattr(
         annotation, "__surp_symbol_enum__"
     )
 
 
 def _resolve_known_forward_refs() -> None:
+    r"""_resolve_known_forward_refs() -> None
+
+    Resolve forward references across all models already in the registry.
+    """
     for model_cls in set(registry.all_models().values()):
         cls: Any = model_cls
         changed = False
@@ -215,6 +308,10 @@ def _resolve_known_forward_refs() -> None:
 
 
 def _resolve_type(annotation: Any) -> Any:
+    r"""_resolve_type(annotation) -> Any
+
+    Resolve nested ``_ForwardRef`` instances inside composite descriptors.
+    """
     if isinstance(annotation, _ForwardRef):
         return registry.get(annotation.name) or annotation
     if isinstance(annotation, _SeqSpec):

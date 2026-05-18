@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from ._field import MISSING
 from ._stream import SurpStream
@@ -37,6 +37,19 @@ from ._validate import validate_value
 
 
 def model_to_ctn(instance: Any, *, indent: int = 2) -> str:
+    r"""model_to_ctn(instance, *, indent=2) -> str
+
+    Serialize a ``SurpModel`` instance to canonical RFC-001 CTN text.
+
+    The model is validated before encoding. The rendered text is passed through
+    the native CTN normalizer so callers receive stable formatting suitable for
+    diffs, tests, and CBF compilation.
+
+    Args:
+        instance (Any): Model or document instance to encode.
+        indent (int, optional): Formatting indentation retained for API
+          compatibility. Default: ``2``
+    """
     validate_model(instance)
     text = _document_to_ctn(instance) if getattr(instance, "__surp_is_document__", False) else _value_to_ctn(instance, _model_type(instance), 0)
     try:
@@ -53,6 +66,17 @@ def model_to_ctn(instance: Any, *, indent: int = 2) -> str:
 
 
 def model_to_cbf(instance: Any, *, alignment: int = 0, with_symtab: bool = True) -> bytes:
+    r"""model_to_cbf(instance, *, alignment=0, with_symtab=True) -> bytes
+
+    Serialize a ``SurpModel`` instance to RFC-001 CBF bytes.
+
+    Args:
+        instance (Any): Model or document instance to encode.
+        alignment (int, optional): Header alignment hint accepted by the native
+          CBF compiler. Default: ``0``
+        with_symtab (bool, optional): Whether to include a CBF symbol table.
+          Default: ``True``
+    """
     try:
         from surp import rfc001
 
@@ -62,6 +86,10 @@ def model_to_cbf(instance: Any, *, alignment: int = 0, with_symtab: bool = True)
 
 
 def model_to_surp(instance: Any, *, dedup: bool = True, sort_keys: bool = True) -> bytes:
+    r"""model_to_surp(instance, *, dedup=True, sort_keys=True) -> bytes
+
+    Serialize a model's plain dictionary view to stable v1 Surp bytes.
+    """
     try:
         import surp
 
@@ -71,6 +99,10 @@ def model_to_surp(instance: Any, *, dedup: bool = True, sort_keys: bool = True) 
 
 
 def _document_to_ctn(instance: Any) -> str:
+    r"""_document_to_ctn(instance) -> str
+
+    Render a ``SurpDocument`` instance as CTN annotations and bindings.
+    """
     lines: list[str] = []
     for name, value in getattr(instance, "__surp_annotations__", []):
         if value is None:
@@ -100,6 +132,10 @@ def _document_to_ctn(instance: Any) -> str:
 
 
 def _value_to_ctn(value: Any, annotation: Any, level: int) -> str:
+    r"""_value_to_ctn(value, annotation, level) -> str
+
+    Render one Python value according to a normalized Surp annotation.
+    """
     annotation = _resolve(annotation)
     if isinstance(annotation, _NullableSpec):
         if value is None:
@@ -154,6 +190,10 @@ def _value_to_ctn(value: Any, annotation: Any, level: int) -> str:
 
 
 def _model_to_ctn(instance: Any, level: int) -> str:
+    r"""_model_to_ctn(instance, level) -> str
+
+    Render a nested ``SurpModel`` as an RFC-001 product value.
+    """
     lines = [getattr(instance, "__rfc_type__", instance.__class__.__name__)]
     for name, field in instance.__surp_fields__.items():
         if name not in instance.__surp_values__:
@@ -168,6 +208,10 @@ def _model_to_ctn(instance: Any, level: int) -> str:
 
 
 def _sum_to_ctn(value: Any, annotation: _SumSpec, level: int) -> str:
+    r"""_sum_to_ctn(value, annotation, level) -> str
+
+    Render a ``SurpVariant`` value according to a ``SumOf`` descriptor.
+    """
     if isinstance(value, dict):
         value = SurpVariant(value["variant"], value.get("payload"))
     variant = next(item for item in annotation.variants if item.name == value.variant)
@@ -188,6 +232,10 @@ def _sum_to_ctn(value: Any, annotation: _SumSpec, level: int) -> str:
 
 
 def _tensor_to_ctn(value: Any, annotation: _TensorSpec) -> str:
+    r"""_tensor_to_ctn(value, annotation) -> str
+
+    Render a flat numeric sequence as a CTN tensor literal.
+    """
     dims = ", ".join("_" if dim is None else str(dim) for dim in annotation.shape)
     suffix = "[" + dims + "]" if annotation.shape else ""
     values = ", ".join(_tensor_number(item, annotation) for item in value)
@@ -195,6 +243,10 @@ def _tensor_to_ctn(value: Any, annotation: _TensorSpec) -> str:
 
 
 def _stream_to_ctn(value: SurpStream, annotation: _StreamSpec) -> str:
+    r"""_stream_to_ctn(value, annotation) -> str
+
+    Render stream metadata annotations for a ``StreamOf`` field.
+    """
     lines = [f"stream<{_type_expr(annotation.item)}>"]
     for name, item in value.annotations.items():
         if item is None:
@@ -205,6 +257,10 @@ def _stream_to_ctn(value: SurpStream, annotation: _StreamSpec) -> str:
 
 
 def _scalar_literal(value: Any, annotation: _ScalarSentinel) -> str:
+    r"""_scalar_literal(value, annotation) -> str
+
+    Render one scalar Python value as a CTN literal.
+    """
     if annotation is Null:
         return "null"
     if annotation is Unit:
@@ -228,6 +284,10 @@ def _scalar_literal(value: Any, annotation: _ScalarSentinel) -> str:
 
 
 def _tensor_number(value: Any, annotation: _TensorSpec) -> str:
+    r"""_tensor_number(value, annotation) -> str
+
+    Render one numeric tensor element with the tensor's dtype suffix.
+    """
     dtype = annotation.dtype.value
     if dtype.startswith("f") or dtype == "bf16":
         return f"{float(value)!r}{dtype}"
@@ -235,6 +295,10 @@ def _tensor_number(value: Any, annotation: _TensorSpec) -> str:
 
 
 def _type_expr(annotation: Any) -> str:
+    r"""_type_expr(annotation) -> str
+
+    Return a CTN type expression for sequence, map, ref, and stream headers.
+    """
     annotation = _resolve(annotation)
     if isinstance(annotation, _ScalarSentinel):
         if annotation.rfc_name.startswith("v"):
@@ -260,20 +324,32 @@ def _type_expr(annotation: Any) -> str:
 
 
 def _annotation_scalar_type(value: Any) -> _ScalarSentinel:
+    r"""_annotation_scalar_type(value) -> _ScalarSentinel
+
+    Infer the scalar marker used for document and stream annotations.
+    """
     if isinstance(value, bool):
         return _ScalarSentinel("bool")
     if isinstance(value, int):
         return _ScalarSentinel("vi64")
     if isinstance(value, float):
-        return F64
+        return cast(_ScalarSentinel, F64)
     return _ScalarSentinel("str")
 
 
 def _model_type(instance: Any) -> type:
+    r"""_model_type(instance) -> type
+
+    Return the concrete model class for an instance.
+    """
     return instance.__class__
 
 
 def _resolve(annotation: Any) -> Any:
+    r"""_resolve(annotation) -> Any
+
+    Resolve a forward reference through the model registry when possible.
+    """
     if isinstance(annotation, _ForwardRef):
         from . import _registry as registry
 
@@ -282,6 +358,10 @@ def _resolve(annotation: Any) -> Any:
 
 
 def _all_inline(values: list[Any], annotation: Any) -> bool:
+    r"""_all_inline(values, annotation) -> bool
+
+    Return true when a short sequence can be rendered on one CTN line.
+    """
     if len(values) > 8:
         return False
     annotation = _resolve(annotation)
@@ -289,20 +369,36 @@ def _all_inline(values: list[Any], annotation: Any) -> bool:
 
 
 def _indent_block(text: str) -> list[str]:
+    r"""_indent_block(text) -> list[str]
+
+    Indent every line of a nested CTN block by two spaces.
+    """
     return ["  " + line for line in text.splitlines()]
 
 
 def _quote(value: str) -> str:
+    r"""_quote(value) -> str
+
+    Quote and escape a Python string for CTN output.
+    """
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + '"'
 
 
 def _is_symbol_enum(annotation: Any) -> bool:
+    r"""_is_symbol_enum(annotation) -> bool
+
+    Return true for ``SurpSymbolEnum`` subclasses.
+    """
     return isinstance(annotation, type) and issubclass(annotation, Enum) and hasattr(
         annotation, "__surp_symbol_enum__"
     )
 
 
 def _is_default_value(value: Any, field: Any) -> bool:
+    r"""_is_default_value(value, field) -> bool
+
+    Return true when an optional field value equals its declared default.
+    """
     if field.default is not MISSING:
         return value == field.default
     if field.default_factory is not None:

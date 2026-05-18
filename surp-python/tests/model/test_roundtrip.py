@@ -49,3 +49,15 @@ def test_required_empty_map_roundtrip_is_canonical():
 def test_to_surp_uses_v1_convenience_path():
     user = User(name="Alice", active=True, address=Address(street="1 Main", city="Paris"))
     assert isinstance(user.to_surp(), bytes)
+
+
+def test_from_surp_roundtrips_v1_convenience_path():
+    user = User(
+        name="Alice",
+        active=True,
+        tags=["admin"],
+        settings={"theme": "dark"},
+        address=Address(street="1 Main", city="Paris"),
+    )
+    restored = User.from_surp(user.to_surp())
+    assert restored == user

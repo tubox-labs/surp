@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Generic, TypeAlias, TypeVar
+
+_T = TypeVar("_T")
+_K = TypeVar("_K")
+_V = TypeVar("_V")
 
 class _TypeSpec:
     kind: str
@@ -86,42 +90,63 @@ class TensorDType(Enum):
 
 class _Alias:
     def __getitem__(self, args: Any) -> Any: ...
+    def __class_getitem__(cls, args: Any) -> Any: ...
 
 def normalize_annotation(annotation: Any) -> Any: ...
 def describe_type(annotation: Any) -> str: ...
 
-Str: _ScalarSentinel
-Bool: _ScalarSentinel
-Null: _ScalarSentinel
-Unit: _ScalarSentinel
-Int8: _ScalarSentinel
-Int16: _ScalarSentinel
-Int32: _ScalarSentinel
-Int64: _ScalarSentinel
-UInt8: _ScalarSentinel
-UInt16: _ScalarSentinel
-UInt32: _ScalarSentinel
-UInt64: _ScalarSentinel
-VarInt32: _ScalarSentinel
-VarInt64: _ScalarSentinel
-VarUInt32: _ScalarSentinel
-VarUInt64: _ScalarSentinel
-F16: _ScalarSentinel
-BF16: _ScalarSentinel
-F32: _ScalarSentinel
-F64: _ScalarSentinel
-Dec32: _ScalarSentinel
-Dec64: _ScalarSentinel
-Dec128: _ScalarSentinel
-Bytes: _ScalarSentinel
-Symbol: _ScalarSentinel
-Tagged: _Alias
-SeqOf: _Alias
-MapOf: _Alias
-RefOf: _Alias
-Nullable: _Alias
-OneOf: _Alias
-Variant: _Alias
-SumOf: _Alias
-Tensor: _Alias
-StreamOf: _Alias
+Str: TypeAlias = str
+Bool: TypeAlias = bool
+Null: TypeAlias = None
+Unit: TypeAlias = None
+Int8: TypeAlias = int
+Int16: TypeAlias = int
+Int32: TypeAlias = int
+Int64: TypeAlias = int
+UInt8: TypeAlias = int
+UInt16: TypeAlias = int
+UInt32: TypeAlias = int
+UInt64: TypeAlias = int
+VarInt32: TypeAlias = int
+VarInt64: TypeAlias = int
+VarUInt32: TypeAlias = int
+VarUInt64: TypeAlias = int
+F16: TypeAlias = float
+BF16: TypeAlias = float
+F32: TypeAlias = float
+F64: TypeAlias = float
+Dec32: TypeAlias = str | int | float
+Dec64: TypeAlias = str | int | float
+Dec128: TypeAlias = str | int | float
+Bytes: TypeAlias = bytes
+Symbol: TypeAlias = str
+
+class Tagged:
+    def __class_getitem__(cls, args: Any) -> Any: ...
+
+class SeqOf(list[_T], Generic[_T]):
+    def __class_getitem__(cls, args: Any) -> Any: ...
+
+class MapOf(dict[_K, _V], Generic[_K, _V]):
+    def __class_getitem__(cls, args: Any) -> Any: ...
+
+class RefOf(Generic[_T]):
+    def __class_getitem__(cls, args: Any) -> Any: ...
+
+class Nullable(Generic[_T]):
+    def __class_getitem__(cls, args: Any) -> Any: ...
+
+class OneOf:
+    def __class_getitem__(cls, args: Any) -> Any: ...
+
+class Variant:
+    def __class_getitem__(cls, args: Any) -> Any: ...
+
+class SumOf:
+    def __class_getitem__(cls, args: Any) -> Any: ...
+
+class Tensor:
+    def __class_getitem__(cls, args: Any) -> Any: ...
+
+class StreamOf(Generic[_T]):
+    def __class_getitem__(cls, args: Any) -> Any: ...
