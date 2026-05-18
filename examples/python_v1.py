@@ -5,6 +5,8 @@ from __future__ import annotations
 from io import BytesIO
 
 import surp
+from surp.model import Field, SurpModel
+from surp.model.types import Bool, MapOf, SeqOf, Str
 
 
 PAYLOAD = {
@@ -15,6 +17,13 @@ PAYLOAD = {
     "avatar": b"\x01\x02\x03",
     "settings": {"theme": "dark", "region": "us"},
 }
+
+
+class UserModel(SurpModel):
+    name: Str = Field(required=True)
+    active: Bool = Field(required=True)
+    tags: SeqOf[Str] = Field(required=False, default_factory=list)
+    settings: MapOf[Str, Str] = Field(required=False, default_factory=dict)
 
 
 def main() -> None:
@@ -37,6 +46,15 @@ def main() -> None:
     surp.dump(PAYLOAD, file_obj, sort_keys=True)
     file_obj.seek(0)
     assert surp.load(file_obj) == PAYLOAD
+
+    model = UserModel(
+        name=PAYLOAD["name"],
+        active=PAYLOAD["active"],
+        tags=PAYLOAD["tags"],
+        settings=PAYLOAD["settings"],
+    )
+    model_data = model.to_surp()
+    assert UserModel.from_surp(model_data) == model
 
     encoder = surp.Encoder(sort_keys=True)
     encoder.enable_dedup()

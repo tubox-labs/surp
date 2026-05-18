@@ -349,7 +349,9 @@ class User(SurpModel):
 user = User(name="Alice", active=True, tags=["admin"], role=Role.ADMIN)
 ctn = user.to_ctn()
 cbf = user.to_cbf()
+surp_bytes = user.to_surp()
 assert User.from_cbf(cbf) == user
+assert User.from_surp(surp_bytes) == user
 assert user.query_one(".name") == "Alice"
 ```
 
@@ -357,6 +359,13 @@ Important public exports include `SurpModel`, `SurpDocument`,
 `SurpSymbolEnum`, `SurpVariant`, `SurpStream`, `Field`, `FieldInfo`,
 `annotation`, `registry`, `generate_model_stubs`, and `write_model_stubs`.
 Type markers live under `surp.model.types`.
+
+Model instances can round-trip through three implemented paths:
+
+- `to_ctn()` / `from_ctn()` for canonical RFC-001 text.
+- `to_cbf()` / `from_cbf()` for RFC-001 binary CBF.
+- `to_surp()` / `from_surp()` for stable v1 Surp bytes using the model's plain
+  dictionary form.
 
 ## Examples
 

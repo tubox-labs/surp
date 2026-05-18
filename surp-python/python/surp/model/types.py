@@ -5,26 +5,71 @@ from typing import Any
 
 
 class _TypeSpec:
+    r"""_TypeSpec() -> _TypeSpec
+
+    Base class for runtime RFC-001 type descriptors.
+
+    Type descriptors are metadata objects used by ``SurpModelMeta`` during
+    model class creation. They intentionally are not Python value types; for
+    example ``Int64`` describes an RFC-001 integer field while the Python value
+    remains a normal ``int``.
+    """
+
     kind: str
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the compact RFC-001 type expression for diagnostics.
+        """
         return self.kind
 
 
 class _ForwardRef(_TypeSpec):
+    r"""_ForwardRef(name) -> _ForwardRef
+
+    Deferred reference to a model class that may be declared later.
+
+    Examples::
+
+        >>> ref = _ForwardRef("Post")
+        >>> ref.describe()
+        'Post'
+    """
+
     kind = "forward"
 
     def __init__(self, name: str) -> None:
+        r"""__init__(name) -> None
+
+        Create a reference to a model or symbol enum by name.
+        """
         self.name = name
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the referenced type name.
+        """
         return self.name
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return a developer-oriented representation for error messages.
+        """
         return f"ForwardRef({self.name!r})"
 
 
 class _ScalarSentinel(_TypeSpec):
+    r"""_ScalarSentinel(rfc_name, *, py_name=None, min_value=None, max_value=None) -> _ScalarSentinel
+
+    Runtime marker for scalar RFC-001 field types.
+
+    The marker carries the RFC scalar name and optional integer bounds. It is
+    used in model annotations such as ``name: Str`` and ``age: Int64``.
+    """
+
     kind = "scalar"
 
     def __init__(
@@ -35,107 +80,234 @@ class _ScalarSentinel(_TypeSpec):
         min_value: int | None = None,
         max_value: int | None = None,
     ) -> None:
+        r"""__init__(rfc_name, *, py_name=None, min_value=None, max_value=None) -> None
+
+        Create a scalar marker with optional Python display name and bounds.
+        """
         self.rfc_name = rfc_name
         self.py_name = py_name or rfc_name
         self.min_value = min_value
         self.max_value = max_value
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the RFC scalar name, such as ``str`` or ``i64``.
+        """
         return self.rfc_name
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return the RFC scalar name for concise schema display.
+        """
         return self.rfc_name
 
 
 class _TaggedSpec(_TypeSpec):
+    r"""_TaggedSpec(tag, inner) -> _TaggedSpec
+
+    Descriptor for tagged scalar values such as ``Tagged["uid", Str]``.
+    """
+
     kind = "tagged"
 
     def __init__(self, tag: str, inner: Any) -> None:
+        r"""__init__(tag, inner) -> None
+
+        Create a tagged scalar descriptor.
+        """
         self.tag = tag
         self.inner = normalize_annotation(inner)
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the RFC-001 tagged type expression.
+        """
         return f"{self.tag}<{describe_type(self.inner)}>"
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return a Python-like representation of the tagged descriptor.
+        """
         return f"Tagged[{self.tag!r}, {self.inner!r}]"
 
 
 class _SeqSpec(_TypeSpec):
+    r"""_SeqSpec(elem) -> _SeqSpec
+
+    Descriptor for homogeneous RFC-001 sequences.
+    """
+
     kind = "sequence"
 
     def __init__(self, elem: Any) -> None:
+        r"""__init__(elem) -> None
+
+        Create a sequence descriptor for ``elem`` values.
+        """
         self.elem = normalize_annotation(elem)
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the RFC-001 sequence type expression.
+        """
         return f"seq<{describe_type(self.elem)}>"
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return a Python-like representation of the sequence descriptor.
+        """
         return f"SeqOf[{self.elem!r}]"
 
 
 class _MapSpec(_TypeSpec):
+    r"""_MapSpec(key, value) -> _MapSpec
+
+    Descriptor for RFC-001 associations with scalar-compatible keys.
+    """
+
     kind = "map"
 
     def __init__(self, key: Any, value: Any) -> None:
+        r"""__init__(key, value) -> None
+
+        Create an association descriptor for ``key`` and ``value`` types.
+        """
         self.key = normalize_annotation(key)
         self.value = normalize_annotation(value)
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the RFC-001 association type expression.
+        """
         return f"map<{describe_type(self.key)}, {describe_type(self.value)}>"
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return a Python-like representation of the map descriptor.
+        """
         return f"MapOf[{self.key!r}, {self.value!r}]"
 
 
 class _RefSpec(_TypeSpec):
+    r"""_RefSpec(inner) -> _RefSpec
+
+    Descriptor for by-id RFC-001 references.
+    """
+
     kind = "reference"
 
     def __init__(self, inner: Any) -> None:
+        r"""__init__(inner) -> None
+
+        Create a reference descriptor for the referenced value type.
+        """
         self.inner = normalize_annotation(inner)
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the RFC-001 reference type expression.
+        """
         return f"ref<{describe_type(self.inner)}>"
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return a Python-like representation of the reference descriptor.
+        """
         return f"RefOf[{self.inner!r}]"
 
 
 class _NullableSpec(_TypeSpec):
+    r"""_NullableSpec(inner) -> _NullableSpec
+
+    Descriptor for optional values that may encode as RFC-001 ``null``.
+    """
+
     kind = "nullable"
 
     def __init__(self, inner: Any) -> None:
+        r"""__init__(inner) -> None
+
+        Create a nullable descriptor for the non-null value type.
+        """
         self.inner = normalize_annotation(inner)
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the RFC-001 nullable type expression.
+        """
         return f"nullable<{describe_type(self.inner)}>"
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return a Python-like representation of the nullable descriptor.
+        """
         return f"Nullable[{self.inner!r}]"
 
 
 class _OneOfSpec(_TypeSpec):
+    r"""_OneOfSpec(options) -> _OneOfSpec
+
+    Descriptor for union-like fields that accept several RFC-001 types.
+    """
+
     kind = "oneof"
 
     def __init__(self, options: tuple[Any, ...]) -> None:
+        r"""__init__(options) -> None
+
+        Create a descriptor from two or more candidate type markers.
+        """
         self.options = tuple(normalize_annotation(option) for option in options)
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the RFC-001 one-of type expression.
+        """
         return "oneof<" + ", ".join(describe_type(option) for option in self.options) + ">"
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return a Python-like representation of the one-of descriptor.
+        """
         return f"OneOf[{', '.join(repr(option) for option in self.options)}]"
 
 
 class _VariantSpec(_TypeSpec):
+    r"""_VariantSpec(name, payload) -> _VariantSpec
+
+    Descriptor for a single variant inside ``SumOf[...]``.
+    """
+
     kind = "variant"
 
     def __init__(self, name: str, payload: tuple[Any, ...]) -> None:
+        r"""__init__(name, payload) -> None
+
+        Create a sum variant with optional tuple or named payload fields.
+        """
         self.name = name
         self.payload = tuple(payload)
 
     @property
     def payload_kind(self) -> str:
+        r"""payload_kind() -> str
+
+        Return ``unit``, ``tuple``, or ``struct`` for this variant payload.
+        """
         if not self.payload:
             return "unit"
         if len(self.payload) == 1 and not _is_named_payload_item(self.payload[0]):
@@ -143,26 +315,61 @@ class _VariantSpec(_TypeSpec):
         return "struct"
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the compact variant descriptor used in schema output.
+        """
         return f"variant<{self.name}>"
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return a Python-like representation of the variant descriptor.
+        """
         return f"Variant[{self.name!r}]"
 
 
 class _SumSpec(_TypeSpec):
+    r"""_SumSpec(variants) -> _SumSpec
+
+    Descriptor for tagged sum fields made from ``Variant[...]`` entries.
+    """
+
     kind = "sum"
 
     def __init__(self, variants: tuple[Any, ...]) -> None:
+        r"""__init__(variants) -> None
+
+        Create a sum descriptor from one or more variant descriptors.
+        """
         self.variants = tuple(variants)
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the RFC-001 sum type expression.
+        """
         return "sum<" + ", ".join(v.name for v in self.variants) + ">"
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return a Python-like representation of the sum descriptor.
+        """
         return f"SumOf[{', '.join(repr(variant) for variant in self.variants)}]"
 
 
 class TensorDType(Enum):
+    r"""TensorDType(value) -> TensorDType
+
+    Supported RFC-001 tensor element types.
+
+    Examples::
+
+        >>> Tensor[TensorDType.F32, (3,)].describe()
+        'tensor<f32>[3]'
+    """
+
     F16 = "f16"
     BF16 = "bf16"
     F32 = "f32"
@@ -178,38 +385,88 @@ class TensorDType(Enum):
 
 
 class _TensorSpec(_TypeSpec):
+    r"""_TensorSpec(dtype, shape) -> _TensorSpec
+
+    Descriptor for dense tensor fields.
+    """
+
     kind = "tensor"
 
     def __init__(self, dtype: TensorDType, shape: tuple[int | None, ...]) -> None:
+        r"""__init__(dtype, shape) -> None
+
+        Create a tensor descriptor with element dtype and shape.
+        """
         self.dtype = dtype
         self.shape = shape
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the RFC-001 tensor type expression.
+        """
         dims = ", ".join("_" if dim is None else str(dim) for dim in self.shape)
         return f"tensor<{self.dtype.value}>[{dims}]"
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return a Python-like representation of the tensor descriptor.
+        """
         return f"Tensor[{self.dtype!r}, {self.shape!r}]"
 
 
 class _StreamSpec(_TypeSpec):
+    r"""_StreamSpec(item) -> _StreamSpec
+
+    Descriptor for RFC-001 stream metadata fields.
+    """
+
     kind = "stream"
 
     def __init__(self, item: Any) -> None:
+        r"""__init__(item) -> None
+
+        Create a stream descriptor for items of ``item`` type.
+        """
         self.item = normalize_annotation(item)
 
     def describe(self) -> str:
+        r"""describe() -> str
+
+        Return the RFC-001 stream type expression.
+        """
         return f"stream<{describe_type(self.item)}>"
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return a Python-like representation of the stream descriptor.
+        """
         return f"StreamOf[{self.item!r}]"
 
 
 class _Alias:
+    r"""_Alias(name) -> _Alias
+
+    Subscriptable runtime factory used by public composite markers.
+
+    ``SeqOf[Str]`` and related forms are executed at class creation time and
+    return immutable descriptor objects consumed by the metaclass.
+    """
+
     def __init__(self, name: str) -> None:
+        r"""__init__(name) -> None
+
+        Create a named marker factory.
+        """
         self.name = name
 
     def __getitem__(self, args: Any) -> Any:
+        r"""__getitem__(args) -> Any
+
+        Build the concrete descriptor represented by ``Alias[...]`` syntax.
+        """
         if not isinstance(args, tuple):
             args = (args,)
         if self.name == "Tagged":
@@ -263,20 +520,48 @@ class _Alias:
         raise TypeError(f"unknown alias {self.name}")
 
     def __repr__(self) -> str:
+        r"""__repr__() -> str
+
+        Return the public marker factory name.
+        """
         return self.name
 
 
 def _is_named_payload_item(item: Any) -> bool:
+    r"""_is_named_payload_item(item) -> bool
+
+    Return true for ``("field_name", TypeMarker)`` variant payload entries.
+    """
     return isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)
 
 
 def normalize_annotation(annotation: Any) -> Any:
+    r"""normalize_annotation(annotation) -> Any
+
+    Normalize raw Python annotations into Surp runtime descriptors.
+
+    This accepts string forward references and Python 3.14 ``annotationlib``
+    forward references, then converts them to Surp's registry-resolved
+    ``_ForwardRef`` objects.
+
+    Examples::
+
+        >>> normalize_annotation("Post").describe()
+        'Post'
+    """
     if isinstance(annotation, str):
         return _ForwardRef(annotation)
+    forward_arg = getattr(annotation, "__forward_arg__", None)
+    if isinstance(forward_arg, str):
+        return _ForwardRef(forward_arg.strip("\"'"))
     return annotation
 
 
 def describe_type(annotation: Any) -> str:
+    r"""describe_type(annotation) -> str
+
+    Return a stable human-readable type expression for diagnostics.
+    """
     if hasattr(annotation, "describe"):
         return annotation.describe()
     if isinstance(annotation, type):

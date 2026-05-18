@@ -33,6 +33,19 @@ from .types import (
 
 
 def from_ctn(cls: type, text: str, *, validate: bool = True) -> Any:
+    r"""from_ctn(cls, text, *, validate=True) -> Any
+
+    Decode RFC-001 CTN text into an instance of ``cls``.
+
+    ``SurpDocument`` subclasses read document bindings, while regular models
+    compile CTN through CBF and decode the effective root product.
+
+    Args:
+        cls (type): Target ``SurpModel`` subclass.
+        text (str): RFC-001 CTN input.
+        validate (bool, optional): Whether to validate decoded values. Default:
+          ``True``
+    """
     try:
         from surp import rfc001
 
@@ -50,6 +63,10 @@ def from_ctn(cls: type, text: str, *, validate: bool = True) -> Any:
 
 
 def from_cbf(cls: type, data: bytes, *, validate: bool = True) -> Any:
+    r"""from_cbf(cls, data, *, validate=True) -> Any
+
+    Decode RFC-001 CBF bytes into an instance of ``cls``.
+    """
     try:
         from surp import rfc001
 
@@ -65,12 +82,44 @@ def from_cbf(cls: type, data: bytes, *, validate: bool = True) -> Any:
 
 
 def from_rfc_value(cls: type, value: Any, *, validate: bool = True) -> Any:
+    r"""from_rfc_value(cls, value, *, validate=True) -> Any
+
+    Decode a native ``RfcValue`` view or RFC value dictionary into ``cls``.
+    """
     if hasattr(value, "to_dict"):
         value = value.to_dict()
     return _model_from_rfc(cls, value, validate=validate)
 
 
+def from_surp(cls: Any, data: bytes, *, validate: bool = True) -> Any:
+    r"""from_surp(cls, data, *, validate=True) -> Any
+
+    Decode stable v1 Surp bytes into a model through its plain dictionary form.
+
+    This is the inverse of ``SurpModel.to_surp`` and is useful when a model is
+    transported over the stable v1 Surp codec rather than RFC-001 CTN/CBF.
+    """
+    try:
+        import surp
+
+        decoded = surp.loads(data)
+    except Exception as exc:  # pragma: no cover - depends on native package availability
+        raise SurpDecodeModelError(str(exc)) from exc
+    if not isinstance(decoded, dict):
+        raise SurpDecodeModelError(
+            f"expected object payload for {cls.__name__}, got {type(decoded).__name__}"
+        )
+    return from_dict(cls, decoded, validate=validate)
+
+
 def from_dict(cls: Any, data: dict[str, Any], *, validate: bool = True) -> Any:
+    r"""from_dict(cls, data, *, validate=True) -> Any
+
+    Create a model instance from plain Python data.
+
+    Nested dictionaries are coerced into nested ``SurpModel`` instances when
+    the field annotation names a model class.
+    """
     if getattr(cls, "__strict__", True):
         extra = sorted(set(data) - set(cls.__surp_fields__))
         if extra:
@@ -84,6 +133,10 @@ def from_dict(cls: Any, data: dict[str, Any], *, validate: bool = True) -> Any:
 
 
 def _document_from_rfc(cls: Any, doc: Any, *, validate: bool) -> Any:
+    r"""_document_from_rfc(cls, doc, *, validate) -> Any
+
+    Build a document model from a parsed CTN document dictionary.
+    """
     binding_values = {binding["name"]: binding["value"] for binding in doc.get("bindings", [])}
     values: dict[str, Any] = {}
     for name, field in cls.__surp_fields__.items():
@@ -94,6 +147,10 @@ def _document_from_rfc(cls: Any, doc: Any, *, validate: bool) -> Any:
 
 
 def _document_from_root(cls: Any, root: Any, *, validate: bool) -> Any:
+    r"""_document_from_root(cls, root, *, validate) -> Any
+
+    Build a document model from a decoded CBF root value.
+    """
     fields = list(cls.__surp_fields__.items())
     if not fields:
         return cls(_validate=validate)
@@ -102,6 +159,10 @@ def _document_from_root(cls: Any, root: Any, *, validate: bool) -> Any:
 
 
 def _model_from_rfc(cls: Any, value: Any, *, validate: bool) -> Any:
+    r"""_model_from_rfc(cls, value, *, validate) -> Any
+
+    Build a model instance from an RFC-001 product dictionary.
+    """
     if value is None:
         raise SurpDecodeModelError(f"expected RFC-001 product for {cls.__name__}")
     if value.get("kind") != "product":
@@ -123,6 +184,10 @@ def _model_from_rfc(cls: Any, value: Any, *, validate: bool) -> Any:
 
 
 def _decode_value(value: dict[str, Any], annotation: Any, *, validate: bool, strict: bool) -> Any:
+    r"""_decode_value(value, annotation, *, validate, strict) -> Any
+
+    Decode one RFC-001 value dictionary according to a Surp annotation.
+    """
     annotation = _resolve(annotation)
     if isinstance(annotation, _NullableSpec):
         if _is_null(value):
@@ -198,7 +263,7 @@ def _decode_value(value: dict[str, Any], annotation: Any, *, validate: bool, str
         }
         return SurpStream(annotations)
     if _is_symbol_enum(annotation):
-        raw = _decode_scalar(value, Symbol)
+        raw = _decode_scalar(value, cast(_ScalarSentinel, Symbol))
         for member in annotation:
             if member.value == raw:
                 return member
@@ -211,6 +276,10 @@ def _decode_value(value: dict[str, Any], annotation: Any, *, validate: bool, str
 
 
 def _decode_scalar(value: dict[str, Any], annotation: _ScalarSentinel) -> Any:
+    r"""_decode_scalar(value, annotation) -> Any
+
+    Decode one RFC-001 scalar dictionary to its Python value.
+    """
     if value.get("kind") != "scalar":
         raise SurpDecodeModelError(f"expected scalar {annotation.rfc_name}")
     scalar_type = value.get("type")
@@ -253,6 +322,10 @@ def _decode_scalar(value: dict[str, Any], annotation: _ScalarSentinel) -> Any:
 
 
 def _coerce_plain(value: Any, annotation: Any, *, validate: bool) -> Any:
+    r"""_coerce_plain(value, annotation, *, validate) -> Any
+
+    Coerce plain dictionary/list data into richer model helper objects.
+    """
     annotation = _resolve(annotation)
     if isinstance(annotation, _NullableSpec):
         if value is None:
@@ -288,15 +361,27 @@ def _coerce_plain(value: Any, annotation: Any, *, validate: bool) -> Any:
 
 
 def _variant_tuple_type(annotation: _SumSpec, name: str) -> Any:
+    r"""_variant_tuple_type(annotation, name) -> Any
+
+    Return the tuple payload type for a named sum variant.
+    """
     variant = next(item for item in annotation.variants if item.name == name)
     return variant.payload[0]
 
 
 def _is_null(value: dict[str, Any]) -> bool:
+    r"""_is_null(value) -> bool
+
+    Return true when an RFC-001 value dictionary represents ``null``.
+    """
     return value.get("kind") == "scalar" and value.get("type") == "null"
 
 
 def _decode_annotation_scalar(value: dict[str, Any] | None) -> Any:
+    r"""_decode_annotation_scalar(value) -> Any
+
+    Decode a stream or document annotation scalar to plain Python.
+    """
     if value is None:
         return None
     scalar_type = value.get("type")
@@ -310,6 +395,10 @@ def _decode_annotation_scalar(value: dict[str, Any] | None) -> Any:
 
 
 def _resolve(annotation: Any) -> Any:
+    r"""_resolve(annotation) -> Any
+
+    Resolve a forward reference through the model registry when possible.
+    """
     if isinstance(annotation, _ForwardRef):
         from . import _registry as registry
 
@@ -318,6 +407,10 @@ def _resolve(annotation: Any) -> Any:
 
 
 def _is_symbol_enum(annotation: Any) -> bool:
+    r"""_is_symbol_enum(annotation) -> bool
+
+    Return true for ``SurpSymbolEnum`` subclasses.
+    """
     return isinstance(annotation, type) and issubclass(annotation, Enum) and hasattr(
         annotation, "__surp_symbol_enum__"
     )

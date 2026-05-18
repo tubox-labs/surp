@@ -18,6 +18,10 @@ from .types import (
 
 
 def schema_ctn(cls: Any) -> str:
+    r"""schema_ctn(cls) -> str
+
+    Return a compact CTN schema document for a Surp model class.
+    """
     pairs = ", ".join(
         f'"{name}" => "{describe_type(field.rfc_type)}"'
         for name, field in cls.__surp_fields__.items()
@@ -36,6 +40,10 @@ def schema_ctn(cls: Any) -> str:
 
 
 def schema_json(cls: Any) -> dict[str, Any]:
+    r"""schema_json(cls) -> dict[str, Any]
+
+    Return a JSON-schema-like dictionary for a Surp model class.
+    """
     properties: dict[str, Any] = {}
     required: list[str] = []
     for name, field in cls.__surp_fields__.items():
@@ -54,6 +62,10 @@ def schema_json(cls: Any) -> dict[str, Any]:
 
 
 def _json_schema_for(annotation: Any) -> dict[str, Any]:
+    r"""_json_schema_for(annotation) -> dict[str, Any]
+
+    Convert one Surp annotation descriptor into JSON-schema-like metadata.
+    """
     if isinstance(annotation, _ScalarSentinel):
         if annotation.rfc_name == "str" or annotation.rfc_name == "sym":
             return {"type": "string", "x-surp-type": annotation.rfc_name}

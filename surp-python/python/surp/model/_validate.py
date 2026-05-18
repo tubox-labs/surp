@@ -35,6 +35,10 @@ from .types import (
 
 
 def collect_model_errors(instance: Any) -> list[SurpFieldError]:
+    r"""collect_model_errors(instance) -> list[SurpFieldError]
+
+    Collect all validation errors for a model instance without raising.
+    """
     errors: list[SurpFieldError] = []
     for name, field in instance.__surp_fields__.items():
         if name not in instance.__surp_values__:
@@ -49,12 +53,20 @@ def collect_model_errors(instance: Any) -> list[SurpFieldError]:
 
 
 def validate_model(instance: Any) -> None:
+    r"""validate_model(instance) -> None
+
+    Validate a model instance and raise ``SurpValidationError`` on failure.
+    """
     errors = collect_model_errors(instance)
     if errors:
         raise SurpValidationError(errors)
 
 
 def validate_value(value: Any, annotation: Any, path: str, *, strict: bool = True) -> list[SurpFieldError]:
+    r"""validate_value(value, annotation, path, *, strict=True) -> list[SurpFieldError]
+
+    Validate a single Python value against a Surp annotation descriptor.
+    """
     annotation = _resolve(annotation)
     if isinstance(annotation, _ForwardRef):
         return [_err(path, annotation.describe(), value, f"unresolved forward reference {annotation.name!r}")]
@@ -111,6 +123,10 @@ def validate_value(value: Any, annotation: Any, path: str, *, strict: bool = Tru
 
 
 def with_prefix(prefix: str, error: SurpFieldError) -> SurpFieldError:
+    r"""with_prefix(prefix, error) -> SurpFieldError
+
+    Prefix a nested validation error path with the parent field name.
+    """
     return SurpFieldError(
         f"{prefix}.{error.field_path}",
         error.expected,
@@ -120,6 +136,10 @@ def with_prefix(prefix: str, error: SurpFieldError) -> SurpFieldError:
 
 
 def _validate_scalar(value: Any, annotation: _ScalarSentinel, path: str) -> list[SurpFieldError]:
+    r"""_validate_scalar(value, annotation, path) -> list[SurpFieldError]
+
+    Validate one Python scalar against an RFC-001 scalar marker.
+    """
     if annotation is Str:
         if isinstance(value, str):
             return []
@@ -162,10 +182,18 @@ def _validate_scalar(value: Any, annotation: _ScalarSentinel, path: str) -> list
 
 
 def _validate_tagged(value: Any, annotation: _TaggedSpec, path: str) -> list[SurpFieldError]:
+    r"""_validate_tagged(value, annotation, path) -> list[SurpFieldError]
+
+    Validate a tagged scalar using its inner scalar marker.
+    """
     return validate_value(value, annotation.inner, path, strict=True)
 
 
 def _validate_symbol_enum(value: Any, enum_cls: type[Enum], path: str, *, strict: bool) -> list[SurpFieldError]:
+    r"""_validate_symbol_enum(value, enum_cls, path, *, strict) -> list[SurpFieldError]
+
+    Validate a value against a ``SurpSymbolEnum`` subclass.
+    """
     if isinstance(value, enum_cls):
         return []
     if isinstance(value, str):
@@ -177,6 +205,10 @@ def _validate_symbol_enum(value: Any, enum_cls: type[Enum], path: str, *, strict
 
 
 def _validate_sum(value: Any, annotation: _SumSpec, path: str, *, strict: bool) -> list[SurpFieldError]:
+    r"""_validate_sum(value, annotation, path, *, strict) -> list[SurpFieldError]
+
+    Validate a ``SurpVariant`` value against a ``SumOf`` descriptor.
+    """
     if isinstance(value, dict) and "variant" in value:
         value = SurpVariant(value["variant"], value.get("payload"))
     if not isinstance(value, SurpVariant):
@@ -208,6 +240,10 @@ def _validate_sum(value: Any, annotation: _SumSpec, path: str, *, strict: bool) 
 
 
 def _validate_tensor(value: Any, annotation: _TensorSpec, path: str) -> list[SurpFieldError]:
+    r"""_validate_tensor(value, annotation, path) -> list[SurpFieldError]
+
+    Validate a flat tensor value against dtype and shape metadata.
+    """
     if not isinstance(value, (list, tuple)):
         return [_err(path, annotation.describe(), value, "tensor value must be a flat list")]
     expected_count = 1
@@ -226,12 +262,20 @@ def _validate_tensor(value: Any, annotation: _TensorSpec, path: str) -> list[Sur
 
 
 def _resolve(annotation: Any) -> Any:
+    r"""_resolve(annotation) -> Any
+
+    Resolve forward references through the model registry when possible.
+    """
     if isinstance(annotation, _ForwardRef):
         return registry.get(annotation.name) or annotation
     return annotation
 
 
 def _is_annotation_scalar(value: Any) -> bool:
+    r"""_is_annotation_scalar(value) -> bool
+
+    Return true for values allowed in RFC-001 annotations.
+    """
     return (
         value is None
         or isinstance(value, (str, bool, float, bytes, bytearray))
@@ -240,16 +284,28 @@ def _is_annotation_scalar(value: Any) -> bool:
 
 
 def _is_symbol_enum(annotation: Any) -> bool:
+    r"""_is_symbol_enum(annotation) -> bool
+
+    Return true for ``SurpSymbolEnum`` subclasses.
+    """
     return isinstance(annotation, type) and issubclass(annotation, Enum) and hasattr(
         annotation, "__surp_symbol_enum__"
     )
 
 
 def _err(path: str, expected: str, got_value: Any, message: str) -> SurpFieldError:
+    r"""_err(path, expected, got_value, message) -> SurpFieldError
+
+    Create a normalized field validation error.
+    """
     return SurpFieldError(path, expected, _got(got_value), message)
 
 
 def _got(value: Any) -> str:
+    r"""_got(value) -> str
+
+    Return the compact type name used in validation diagnostics.
+    """
     if value == "missing":
         return "missing"
     if value is None:

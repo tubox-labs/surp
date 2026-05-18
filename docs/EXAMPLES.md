@@ -86,7 +86,7 @@ cargo run -p surp-cli -- rfc-query /tmp/user.crb ".tags[-1]"
 
 | Example | Demonstrates |
 | --- | --- |
-| `python_v1.py` | `dumps`, `loads`, file-like APIs, text parse/pretty print, incremental encoder/decoder |
+| `python_v1.py` | `dumps`, `loads`, file-like APIs, text parse/pretty print, incremental encoder/decoder, `SurpModel.to_surp` / `from_surp` |
 | `python_rfc001.py` | `parse_ctn`, `normalize_ctn`, `compile_ctn`, `decode_cbf`, `query_cbf`, `query_ctn` |
 | `v1_roundtrip.rs` | `Value`, `Encoder`, `Decoder`, dedup, owned decode |
 | `text_format.rs` | `surp_core::text::parse` and `pretty_print` |
