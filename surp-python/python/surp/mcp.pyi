@@ -1,0 +1,6 @@
+from __future__ import annotations
+
+from typing import Any
+
+def main() -> None: ...
+def handle_message(raw: str, security: Any) -> dict[str, Any] | None: ...

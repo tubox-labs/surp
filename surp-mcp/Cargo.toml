@@ -1,0 +1,31 @@
+[package]
+name = "surp-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
+description = "Model Context Protocol server exposing Surp v1 and RFC-001 functionality"
+documentation = "https://docs.rs/surp-mcp"
+keywords = ["serialization", "mcp", "surp", "codec", "tools"]
+categories = ["encoding", "command-line-utilities", "development-tools"]
+rust-version.workspace = true
+
+[[bin]]
+name = "surp-mcp"
+path = "src/main.rs"
+
+[features]
+default = []
+zstd = ["surp-core/zstd"]
+lz4 = ["surp-core/lz4"]
+snappy = ["surp-core/snappy"]
+
+[dependencies]
+surp-core = { workspace = true }
+base64 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
