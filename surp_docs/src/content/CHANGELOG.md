@@ -1,0 +1,203 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## Versioning Rules
+
+- **Major**: File format changes, breaking API changes, and incompatible wire semantics.
+- **Minor**: Backward-compatible features and public API additions.
+- **Patch**: Bug fixes, performance improvements, tests, and documentation.
+
+## [Unreleased]
+
+No unreleased changes.
+
+## [1.0.2] - 2026-05-18
+
+This patch release fixes Python 3.14 model annotation handling, improves model
+typing for static analyzers, and adds the missing v1 Surp decode companion for
+model instances.
+
+### Added
+
+- Added `SurpModel.from_surp(data, *, validate=True)` as the inverse of
+  `SurpModel.to_surp()` for stable v1 Surp bytes encoded from a model's plain
+  dictionary form.
+- Added regression coverage for the v1 model convenience round-trip.
+
+### Changed
+
+- Reworked `surp.model` developer docstrings into raw reStructuredText-style
+  docstrings with explicit signatures, arguments, return details, and examples
+  following the repository docstring skill format.
+- Updated Python API docs and examples to show model round-trips through
+  `to_surp()` and `from_surp()`.
+- Updated workspace, Python package, benchmark, and example version metadata to
+  `1.0.2`.
+
+### Fixed
+
+- Fixed Python 3.14 lazy class annotations so model fields declared without
+  `from __future__ import annotations` are collected correctly by
+  `SurpModelMeta`.
+- Fixed Pylance/Pyright `reportInvalidTypeForm` warnings for public model type
+  markers such as `Int64`, `Str`, and `SeqOf[Str]` by making the shipped stubs
+  valid type expressions while preserving runtime marker behavior.
+
+### Validation
+
+- `python3 -m py_compile surp-python/python/surp/model/*.py`
+- `PYTHONPATH=surp-python/python /Users/kuroyami/Pyprojects/Testing/env/bin/python -m pytest surp-python/tests/ -q`
+- `python examples/python_v1.py`
+- `PYTHONPATH=surp-python/python .venv/bin/pyright surp-python/python/surp/model examples/python_v1.py`
+- `cargo fmt --all -- --check`
+- `cargo test --workspace --all-features`
+- `git diff --check`
+
+## [1.0.1] - 2026-05-17
+
+This patch release promotes the staged `v1.0.1` API work, expands release
+documentation, and adds committed benchmark evidence for the public release.
+
+### Added
+
+- Added `surp.model`, an RFC-001-native class schema and validation layer
+  inside the `surp` Python package. It supports declarative `SurpModel` and
+  `SurpDocument` classes, `Field(...)` descriptors, RFC-001 scalar and
+  composite type markers, symbol enums, references, streams, tensors, sums,
+  validation errors, schema inspection, CQL query helpers, and typed stub
+  generation.
+- Added Rust v1 introspection helpers on `Value` and `SurpValue<'_>` for
+  JSON-like object and array access: `get`, `get_index`, `contains_key`,
+  `keys`, `values`, `items`/`entries`, container predicates, and length checks.
+- Added RFC-001 AST introspection helpers for documents, products, sums,
+  sequences, tensors, tensor data, streams, and RFC values.
+- Added native-backed Python view/model APIs for discoverable attribute access:
+  `SurpValue`, `to_value`, `loads_value`, and `parse_text_value`.
+- Added native-backed Python RFC-001 model APIs:
+  `RfcAnnotation`, `RfcField`, `RfcBinding`, `RfcHeader`, `RfcDocument`,
+  `RfcDecodedCbf`, `RfcValue`, `parse_ctn_model`, `decode_cbf_model`,
+  `query_cbf_model`, and `query_ctn_model`.
+- Added a private `_surp_native.pyi` stub so Pyright and other type checkers can
+  resolve the compiled extension module through the public facade.
+- Added Protocol Buffers coverage to the Rust benchmark harness using a generic
+  value schema that can represent the same schema-less benchmark payloads as
+  Surp, JSON, MessagePack, and CBOR.
+- Added SVG benchmark chart generation for serialized size, encode throughput,
+  and decode throughput.
+- Added committed `v1.0.1` benchmark artifacts under
+  `docs/assets/bench/v1.0.1`.
+
+### Changed
+
+- Moved the RFC-001 model validation layer into the native Python distribution
+  so users import it as `from surp.model import ...`; the standalone
+  `surp-model` package layout is not shipped.
+- Expanded Python `.pyi` stubs and shared typed dictionaries to describe the new
+  v1, RFC-001 introspection, and `surp.model` validation surfaces.
+- Updated Python and Rust docs plus examples to show model/view access while
+  keeping the existing dictionary and built-in Python value APIs documented.
+- Updated Python packaging metadata to ship package-local README and license
+  files directly with wheels and sdists.
+- Rewrote the root README as a complete project guide covering installation,
+  Rust/Python/CLI usage, RFC-001, Python RFC models, local development,
+  benchmarks, and release workflow.
+- Updated Rust workspace version metadata from `1.0.0` to `1.0.1` so the Rust
+  crates align with the Python package and release tag.
+
+### Fixed
+
+- Fixed RFC-001 CTN formatting for empty maps so canonical output remains
+  parseable and `normalize_ctn()` stays idempotent for empty map fields.
+- Fixed Pyright analysis of `surp`, `surp.exceptions`, and `surp.rfc001` by
+  providing a typed private stub for the native extension import.
+- Fixed RFC-001 query overload stubs so `as_ctn=True` and `as_ctn=False` are
+  distinguishable to type checkers.
+
+### Validation
+
+- `cargo check -p surp-bench`
+- `cargo fmt --all -- --check`
+- `cargo test --workspace --all-features`
+- `cargo clippy --workspace --all-features -- -D warnings`
+- `cargo run -p surp-bench --release -- --mode full --output docs/assets/bench/v1.0.1 --version v1.0.1`
+- `cd surp-python && ../.venv/bin/maturin develop --release`
+- `cd surp-python && ../.venv/bin/python -m pytest tests/ -v`
+- `cd surp-python && ../.venv/bin/python -m mypy python/surp`
+- `cd surp-python && ../.venv/bin/pyright python/surp`
+
+## [1.0.0] - 2026-05-17
+
+### Added
+
+- First stable Surp release under the `surp` project and package name.
+- Rust workspace crates:
+  - `surp-core` for v1 binary encoding/decoding, block framing, `Value`,
+    zero-copy `SurpValue`, resource limits, checksums, text parsing, and
+    RFC-001 modules.
+  - `surp-derive` for `#[derive(Surp)]` and `#[derive(SurpSchema)]`.
+  - `surp-cli` for v1 file inspection/conversion/validation and RFC-001
+    CTN/CBF/CQL commands.
+  - `surp-io` for file/shared-buffer helpers, Tokio framed IO, and optional
+    mmap support.
+  - `surp-compression` for compressor adapters and adaptive selection.
+  - `surp-ffi` for C-compatible JSON-to-Surp and Surp-to-JSON buffers.
+  - `surp-simd` for byte scanning and batched varint helpers.
+  - `surp-python`, published as the native Python package `surp`.
+- v1 binary format support for null, booleans, unsigned and signed integers,
+  floats, strings, bytes, arrays, ordered objects, block checksums, trailer
+  checksums, optional block compression, and per-block string dictionary
+  deduplication.
+- Human-readable v1 text notation with object fields, arrays, base64 bytes,
+  comments, optional type annotations, `inf`, `-inf`, and `NaN`.
+- Native Python API:
+  - `dumps`, `loads`, `dump`, `load`
+  - `encode`, `decode`, `encode_to_file`, `decode_from_file`
+  - `parse_text`, `pretty_print`
+  - `Encoder`, `SurpDecoder`
+  - `SurpError`, `SurpEncodeError`, `SurpDecodeError`,
+    `SurpChecksumError`, `SurpTypeError`, and `SurpRfcError`
+- RFC-001 implementation under `surp_core::rfc001` with CTN parsing and
+  formatting, CBF encoding/decoding, CRC64 validation, symbol tables, product,
+  sum, sequence, map, reference, tensor, stream, and opaque/tagged value
+  support.
+- Python RFC-001 API under `surp.rfc001` for CTN parsing/normalization,
+  CTN-to-CBF compilation, CBF decoding, CBF-to-CTN formatting, and baseline
+  CQL queries.
+- CLI RFC-001 commands: `rfc-compile`, `rfc-inspect`, and `rfc-query`.
+- Comprehensive Rust, Python, CLI, and RFC-001 documentation under `docs/`.
+- Runnable examples and fixtures under `examples/` for Rust, Python, CLI, v1
+  text/binary workflows, derives, and RFC-001 CTN/CBF/CQL.
+- Regression tests for v1 roundtrips, adversarial inputs, resource limits,
+  string dictionary references, compression, text parsing, derive macros,
+  RFC-001 CTN/CBF/CQL behavior, Python native APIs, and cross-language
+  behavior.
+
+### Changed
+
+- Versioning is reset to `1.0.0` for the Surp project, Rust workspace crates,
+  Python package metadata, native extension metadata, benchmark crate, and
+  example package.
+- Release metadata now targets a fresh `v1.0.0` GitHub release.
+
+### Removed
+
+- Removed the legacy pure-Python package tree. Python users should install the
+  Rust-backed native `surp` package.
+- Removed legacy project/version history from the active changelog so the
+  public Surp line starts at `v1.0.0`.
+
+## Release Checklist
+
+- [x] Update version metadata to `1.0.0`
+- [x] Update changelog and release notes
+- [x] Run `cargo fmt --all`
+- [x] Run `cargo test --workspace --all-features`
+- [x] Run `cargo clippy --workspace --all-features -- -D warnings`
+- [x] Run Python native tests
+- [x] Verify Rust, Python, and CLI examples
+- [ ] Push commits and tag `v1.0.0`
+- [ ] Create GitHub release with `gh`

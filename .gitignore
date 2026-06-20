@@ -19,3 +19,10 @@ build/
 .maturin/
 .pytest_cache/
 surp-python/python/surp/_surp_native*.so
+
+
+.DS_Store
+*.log
+*.tmp
+
+.env

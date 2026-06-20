@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /not-found
+
+Sitemap: https://surp.tuboxlabs.com/sitemap.xml
