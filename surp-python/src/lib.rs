@@ -86,9 +86,25 @@ fn map_rfc_error(e: surp_core::SurpError) -> PyErr {
 // Python ↔ Value conversion helpers
 // ---------------------------------------------------------------------------
 
+/// Maximum recursion depth accepted when converting a Python object into a
+/// `Value`. Mirrors `surp_core::Limits::default().max_nesting_depth` (128).
+/// Without this cap, a sufficiently deep Python structure passed to
+/// `dumps()`/`Encoder.encode()` would overflow the native call stack and
+/// abort the whole interpreter instead of raising a catchable exception.
+const MAX_PY_TO_VALUE_DEPTH: usize = 128;
+
 /// Convert a Python object to a Surp `Value`.
 /// If sort_keys is true, object keys will be sorted alphabetically.
 fn py_to_value(obj: &Bound<'_, PyAny>, sort_keys: bool) -> PyResult<Value> {
+    py_to_value_depth(obj, sort_keys, 0)
+}
+
+fn py_to_value_depth(obj: &Bound<'_, PyAny>, sort_keys: bool, depth: usize) -> PyResult<Value> {
+    if depth > MAX_PY_TO_VALUE_DEPTH {
+        return Err(SurpTypeError::new_err(format!(
+            "nesting depth exceeds maximum of {MAX_PY_TO_VALUE_DEPTH}"
+        )));
+    }
     if obj.is_none() {
         return Ok(Value::Null);
     }
@@ -98,12 +114,24 @@ fn py_to_value(obj: &Bound<'_, PyAny>, sort_keys: bool) -> PyResult<Value> {
         return Ok(Value::Bool(b));
     }
     if obj.is_instance_of::<PyInt>() {
-        let n: i64 = obj.extract()?;
-        return if n >= 0 {
-            Ok(Value::UInt(n as u64))
-        } else {
-            Ok(Value::Int(n))
-        };
+        // Try `i64` first (covers the common negative and small-positive
+        // case cheaply); fall back to `u64` for large non-negative values
+        // that overflow `i64` but still fit in `Value::UInt`'s full range
+        // (e.g. `2**63..2**64`). Only error for values that are truly out
+        // of range on both sides, since Python ints are arbitrary precision.
+        if let Ok(n) = obj.extract::<i64>() {
+            return if n >= 0 {
+                Ok(Value::UInt(n as u64))
+            } else {
+                Ok(Value::Int(n))
+            };
+        }
+        if let Ok(n) = obj.extract::<u64>() {
+            return Ok(Value::UInt(n));
+        }
+        return Err(SurpTypeError::new_err(
+            "integer out of range for Surp encoding (must fit in i64 or u64)",
+        ));
     }
     if obj.is_instance_of::<PyFloat>() {
         let f: f64 = obj.extract()?;
@@ -117,14 +145,16 @@ fn py_to_value(obj: &Bound<'_, PyAny>, sort_keys: bool) -> PyResult<Value> {
         let b: Vec<u8> = obj.extract()?;
         return Ok(Value::Bytes(b));
     }
-    if obj.is_instance_of::<PyDict>() {
-        let d = obj.cast_exact::<PyDict>()?;
+    // `downcast` (subclass-tolerant) rather than `cast_exact` (exact-type-only)
+    // so dict/list/tuple *subclasses* (OrderedDict, defaultdict, NamedTuple,
+    // etc.) encode correctly instead of raising a raw cast-error TypeError.
+    if let Ok(d) = obj.cast::<PyDict>() {
         let mut entries = Vec::with_capacity(d.len());
         for (k, v) in d.iter() {
             let key: String = k
                 .extract()
                 .map_err(|_| SurpTypeError::new_err("dict keys must be strings"))?;
-            let val = py_to_value(&v, sort_keys)?;
+            let val = py_to_value_depth(&v, sort_keys, depth + 1)?;
             entries.push((key, val));
         }
         if sort_keys {
@@ -132,19 +162,17 @@ fn py_to_value(obj: &Bound<'_, PyAny>, sort_keys: bool) -> PyResult<Value> {
         }
         return Ok(Value::Object(entries));
     }
-    if obj.is_instance_of::<PyList>() {
-        let l = obj.cast_exact::<PyList>()?;
+    if let Ok(l) = obj.cast::<PyList>() {
         let mut items = Vec::with_capacity(l.len());
         for item in l.iter() {
-            items.push(py_to_value(&item, sort_keys)?);
+            items.push(py_to_value_depth(&item, sort_keys, depth + 1)?);
         }
         return Ok(Value::Array(items));
     }
-    if obj.is_instance_of::<PyTuple>() {
-        let t = obj.cast_exact::<PyTuple>()?;
+    if let Ok(t) = obj.cast::<PyTuple>() {
         let mut items = Vec::with_capacity(t.len());
         for item in t.iter() {
-            items.push(py_to_value(&item, sort_keys)?);
+            items.push(py_to_value_depth(&item, sort_keys, depth + 1)?);
         }
         return Ok(Value::Array(items));
     }
@@ -156,6 +184,19 @@ fn py_to_value(obj: &Bound<'_, PyAny>, sort_keys: bool) -> PyResult<Value> {
 
 /// Convert a Surp `Value` to a Python object.
 fn value_to_py<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny>> {
+    value_to_py_depth(py, value, 0)
+}
+
+fn value_to_py_depth<'py>(
+    py: Python<'py>,
+    value: &Value,
+    depth: usize,
+) -> PyResult<Bound<'py, PyAny>> {
+    if depth > MAX_PY_TO_VALUE_DEPTH {
+        return Err(SurpDecodeError::new_err(format!(
+            "nesting depth exceeds maximum of {MAX_PY_TO_VALUE_DEPTH}"
+        )));
+    }
     match value {
         Value::Null => Ok(py.None().into_bound(py)),
         Value::Bool(b) => Ok(b.into_pyobject(py)?.to_owned().into_any()),
@@ -167,14 +208,14 @@ fn value_to_py<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny
         Value::Array(items) => {
             let list = PyList::empty(py);
             for item in items {
-                list.append(value_to_py(py, item)?)?;
+                list.append(value_to_py_depth(py, item, depth + 1)?)?;
             }
             Ok(list.into_any())
         }
         Value::Object(entries) => {
             let dict = PyDict::new(py);
             for (key, val) in entries {
-                dict.set_item(key, value_to_py(py, val)?)?;
+                dict.set_item(key, value_to_py_depth(py, val, depth + 1)?)?;
             }
             Ok(dict.into_any())
         }
@@ -182,16 +223,32 @@ fn value_to_py<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny
 }
 
 /// Parse compression string to CompressionType.
+///
+/// Also verifies the requested algorithm is actually backed by a compiled-in
+/// codec: `surp-python`'s Cargo.toml does not enable `surp-core`'s `zstd`/
+/// `lz4`/`snappy` features, so without this check `set_compression()` would
+/// silently no-op (the encoder falls back to storing blocks uncompressed)
+/// rather than raising a clear error.
 fn parse_compression(comp: Option<&str>) -> PyResult<CompressionType> {
-    match comp {
-        None | Some("none") => Ok(CompressionType::None),
-        Some("lz4") => Ok(CompressionType::Lz4),
-        Some("zstd") => Ok(CompressionType::Zstd),
-        Some("snappy") => Ok(CompressionType::Snappy),
-        Some(other) => Err(PyValueError::new_err(format!(
-            "unknown compression: {other} (expected none, lz4, zstd, snappy)"
-        ))),
+    let ct = match comp {
+        None | Some("none") => CompressionType::None,
+        Some("lz4") => CompressionType::Lz4,
+        Some("zstd") => CompressionType::Zstd,
+        Some("snappy") => CompressionType::Snappy,
+        Some(other) => {
+            return Err(PyValueError::new_err(format!(
+                "unknown compression: {other} (expected none, lz4, zstd, snappy)"
+            )));
+        }
+    };
+    if !CoreEncoder::compression_supported(ct) {
+        return Err(SurpEncodeError::new_err(format!(
+            "compression '{}' requires the surp-core '{}' feature, which is not enabled in this build",
+            comp.unwrap_or("none"),
+            comp.unwrap_or("none"),
+        )));
     }
+    Ok(ct)
 }
 
 // ---------------------------------------------------------------------------

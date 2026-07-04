@@ -343,6 +343,21 @@ impl Encoder {
     /// Compress the payload using the configured compression algorithm.
     /// Returns `None` if the compression feature is not available.
     #[allow(unused_variables)]
+    /// Whether `compression` is actually backed by a compiled-in codec.
+    ///
+    /// `compress_payload` silently falls back to storing a block
+    /// uncompressed when the corresponding Cargo feature (`zstd`/`lz4`/
+    /// `snappy`) isn't enabled — this lets callers detect that upfront and
+    /// raise a clear error instead of silently shipping uncompressed data.
+    pub fn compression_supported(compression: CompressionType) -> bool {
+        match compression {
+            CompressionType::None => true,
+            CompressionType::Zstd => cfg!(feature = "zstd"),
+            CompressionType::Snappy => cfg!(feature = "snappy"),
+            CompressionType::Lz4 => cfg!(feature = "lz4"),
+        }
+    }
+
     fn compress_payload(&self, data: &[u8]) -> Option<Vec<u8>> {
         match self.compression {
             CompressionType::None => None,

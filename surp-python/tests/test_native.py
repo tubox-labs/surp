@@ -118,6 +118,103 @@ class TestEncoderDecoderClasses:
             enc.set_compression("invalid")
 
 
+class TestCriticalBugRegressions:
+    """Regression tests for a prior audit's three confirmed Critical bugs.
+
+    See surp-python/src/lib.rs `py_to_value`/`value_to_py`/`parse_compression`.
+    """
+
+    def test_dict_subclass_encodes_successfully(self):
+        # `is_instance_of::<PyDict>()` (subclass-inclusive) followed by
+        # `cast_exact::<PyDict>()` (exact-type-only) used to raise a raw
+        # PyO3 TypeError for any dict subclass instead of encoding it.
+        from collections import OrderedDict, defaultdict
+
+        od = OrderedDict(a=1, b=2)
+        assert surp.decode(surp.encode(od)) == {"a": 1, "b": 2}
+        assert surp.loads(surp.dumps(od)) == {"a": 1, "b": 2}
+
+        dd: "defaultdict[str, int]" = defaultdict(int)
+        dd["x"] = 1
+        dd["y"] = 2
+        assert surp.decode(surp.encode(dd)) == {"x": 1, "y": 2}
+
+    def test_namedtuple_encodes_successfully(self):
+        # typing.NamedTuple instances are tuple subclasses and hit the same
+        # is_instance_of/cast_exact mismatch for PyTuple.
+        from typing import NamedTuple
+
+        class Point(NamedTuple):
+            x: int
+            y: int
+
+        point = Point(1, 2)
+        assert surp.decode(surp.encode(point)) == [1, 2]
+        assert surp.loads(surp.dumps(point)) == [1, 2]
+
+    def test_list_subclass_encodes_successfully(self):
+        # Same is_instance_of/cast_exact mismatch for PyList subclasses.
+        class MyList(list):
+            pass
+
+        items = MyList([1, 2, 3])
+        assert surp.decode(surp.encode(items)) == [1, 2, 3]
+
+    def test_deeply_nested_list_raises_catchable_exception_not_crash(self):
+        # py_to_value/value_to_py used to recurse with no depth limit of
+        # their own, so a deeply nested structure could overflow the native
+        # call stack and crash the whole process instead of raising a
+        # catchable Python exception. Built iteratively (no Python-level
+        # recursion) so constructing the fixture itself is always safe.
+        nested = []
+        for _ in range(5000):
+            nested = [nested]
+
+        with pytest.raises(surp.SurpError):
+            surp.dumps(nested)
+
+        with pytest.raises(surp.SurpError):
+            surp.encode(nested)
+
+    def test_dumps_with_unavailable_compression_raises_clear_exception(self):
+        # surp-python/Cargo.toml depends on surp-core without enabling the
+        # zstd/lz4/snappy Cargo features, so requesting any of them used to
+        # silently no-op (compress_payload() -> None, encoder falls back to
+        # storing the block uncompressed) instead of raising.
+        for algo in ("lz4", "zstd", "snappy"):
+            with pytest.raises(surp.SurpEncodeError):
+                surp.dumps({"a": 1}, compression=algo)
+
+    def test_encoder_set_compression_with_unavailable_algo_raises(self):
+        enc = surp.Encoder()
+        with pytest.raises(surp.SurpEncodeError):
+            enc.set_compression("lz4")
+
+    def test_large_positive_int_roundtrips_via_full_u64_range(self):
+        # py_to_value used to extract Python ints as i64 unconditionally, so
+        # any non-negative int >= 2**63 (still well within Value::UInt's u64
+        # range, and already supported on the decode side) raised a raw
+        # PyO3 OverflowError instead of encoding successfully.
+        assert surp.loads(surp.dumps(2**63)) == 2**63
+        assert surp.loads(surp.dumps(2**64 - 1)) == 2**64 - 1  # u64::MAX
+
+    def test_i64_min_still_encodes_via_signed_path(self):
+        assert surp.loads(surp.dumps(-(2**63))) == -(2**63)  # i64::MIN
+
+    def test_int_beyond_u64_range_raises_clean_exception_not_crash(self):
+        # 2**64 overflows both i64 and u64, so it must raise a catchable
+        # SurpTypeError rather than crash or silently truncate.
+        with pytest.raises(surp.SurpTypeError):
+            surp.dumps(2**64)
+
+    def test_very_negative_int_beyond_i64_min_raises_clean_exception(self):
+        # Python ints are arbitrary precision; a value far below i64::MIN
+        # has no representation in Value::Int/Value::UInt and must raise
+        # cleanly instead of panicking.
+        with pytest.raises(surp.SurpTypeError):
+            surp.dumps(-(2**100))
+
+
 RFC_COMPLEX_CTN = """
 @surp v1
 @encoding cbf
