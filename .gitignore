@@ -26,3 +26,10 @@ surp-python/python/surp/_surp_native*.so
 *.tmp
 
 .env
+
+.claude/
+
+.agents/skills/caveman
+
+fuzz/
+fuzz/**
