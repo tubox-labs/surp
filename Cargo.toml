@@ -10,6 +10,7 @@ members = [
     "surp-python",
     "examples/rust",
     "bench",
+    "surp-mcp",
 ]
 exclude = ["fuzz"]
 resolver = "3"

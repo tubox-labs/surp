@@ -20,6 +20,13 @@ pub enum ProtocolError {
     Security(#[from] crate::security::SecurityError),
 }
 
+/// Maximum bracket/brace nesting depth accepted in a raw RPC message before
+/// it is handed to `serde_json`. `serde_json`'s recursive-descent parser has
+/// no built-in depth limit and will blow the call stack on sufficiently deep
+/// input (e.g. a long run of `[[[[...`); pre-scanning for depth lets us
+/// reject such payloads with a clean error instead of crashing the process.
+const MAX_JSON_NESTING_DEPTH: usize = 128;
+
 #[derive(Debug, Deserialize)]
 struct RpcMessage {
     #[allow(dead_code)]
@@ -68,6 +75,32 @@ pub fn run_stdio() -> Result<(), ProtocolError> {
 }
 
 pub fn handle_message(raw: &str, security: &SecurityConfig) -> Option<Json> {
+    // Reject oversized or pathologically nested messages before they are
+    // ever handed to serde_json. Both checks run ahead of any
+    // SecurityConfig payload-size check applied to parsed tool arguments,
+    // since those only cover already-parsed values and can't protect
+    // against a single huge/deep raw line.
+    if raw.len() > security.max_line_bytes {
+        return Some(response_error(
+            None,
+            -32700,
+            format!(
+                "message is {} bytes, exceeding the configured maximum of {} bytes",
+                raw.len(),
+                security.max_line_bytes
+            ),
+        ));
+    }
+    if json_nesting_depth_exceeds(raw, MAX_JSON_NESTING_DEPTH) {
+        return Some(response_error(
+            None,
+            -32700,
+            format!(
+                "message nesting depth exceeds the configured maximum of {MAX_JSON_NESTING_DEPTH}"
+            ),
+        ));
+    }
+
     let parsed: Result<RpcMessage, _> = serde_json::from_str(raw);
     let message = match parsed {
         Ok(message) => message,
@@ -102,6 +135,41 @@ pub fn handle_message(raw: &str, security: &SecurityConfig) -> Option<Json> {
         Ok(result) => response_result(id, result),
         Err(err) => response_error(id, err.code, err.message),
     })
+}
+
+/// Cheaply pre-scans raw JSON text for excessive `{`/`[` nesting depth
+/// without doing a full parse. String contents (including escaped quotes)
+/// are skipped so brackets inside string literals don't affect the count.
+/// This is a best-effort guard: it only needs to catch pathological input
+/// before it reaches `serde_json`, not to fully validate JSON syntax.
+fn json_nesting_depth_exceeds(text: &str, max_depth: usize) -> bool {
+    let mut depth: usize = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+    for ch in text.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '{' | '[' => {
+                depth += 1;
+                if depth > max_depth {
+                    return true;
+                }
+            }
+            '}' | ']' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    false
 }
 
 fn initialize_result(params: Option<&Json>) -> Json {
@@ -262,5 +330,48 @@ mod tests {
         )
         .unwrap();
         assert_eq!(response["result"]["isError"], true);
+    }
+
+    #[test]
+    fn oversized_line_is_rejected_before_parsing() {
+        let mut security = SecurityConfig::from_env().unwrap();
+        security.max_line_bytes = 64;
+
+        // Build a line far exceeding the cap; if this were fed to
+        // serde_json::from_str unchecked it would still just be a large
+        // allocation/parse, but the point is it must never get that far.
+        let huge_string = "a".repeat(10 * 1024 * 1024);
+        let raw = format!(r#"{{"jsonrpc":"2.0","id":1,"method":"ping","params":"{huge_string}"}}"#);
+        assert!(raw.len() > security.max_line_bytes);
+
+        let response = handle_message(&raw, &security).expect("clean error response");
+        assert_eq!(response["error"]["code"], -32700);
+        assert!(
+            response["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("exceeding the configured maximum"),
+        );
+        assert!(response["result"].is_null());
+    }
+
+    #[test]
+    fn deeply_nested_message_is_rejected_before_parsing() {
+        let security = SecurityConfig::from_env().unwrap();
+        let depth = MAX_JSON_NESTING_DEPTH + 100;
+        let mut raw = String::new();
+        raw.push_str(r#"{"jsonrpc":"2.0","id":1,"method":"ping","params":"#);
+        raw.push_str(&"[".repeat(depth));
+        raw.push_str(&"]".repeat(depth));
+        raw.push('}');
+
+        let response = handle_message(&raw, &security).expect("clean error response");
+        assert_eq!(response["error"]["code"], -32700);
+        assert!(
+            response["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("nesting depth"),
+        );
     }
 }

@@ -366,18 +366,30 @@ pub fn prompt(name: &str, args: Option<&Json>) -> Option<Json> {
 }
 
 fn tool(name: &str, description: &str, input_schema: Json) -> Json {
+    let read_only = !schema_accepts_property(&input_schema, "output_path");
     json!({
         "name": name,
         "description": description,
         "inputSchema": input_schema,
         "outputSchema": {"type": "object"},
         "annotations": {
-            "readOnlyHint": !name.contains("encode_json") && !name.contains("text_to_binary") && !name.contains("compile_ctn"),
+            "readOnlyHint": read_only,
             "destructiveHint": false,
             "idempotentHint": true,
             "openWorldHint": false
         }
     })
+}
+
+/// Derive safety hints from the tool's actual declared schema rather than
+/// from a name substring heuristic. A tool whose `inputSchema.properties`
+/// includes `output_path` can write/overwrite files via
+/// `SecurityConfig::write_file`, so it must not be marked read-only.
+fn schema_accepts_property(schema: &Json, key: &str) -> bool {
+    schema
+        .get("properties")
+        .and_then(Json::as_object)
+        .is_some_and(|properties| properties.contains_key(key))
 }
 
 fn resource(uri: &str, name: &str, description: &str) -> Json {
@@ -481,5 +493,49 @@ impl WithRequired for Json {
                 .collect(),
         );
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tools whose schema declares `output_path` can write/overwrite files
+    /// via `security.write_file`, so MCP clients must not treat them as
+    /// read-only (readOnlyHint must be false so clients prompt for
+    /// confirmation before invoking them).
+    #[test]
+    fn tools_with_output_path_are_never_marked_read_only() {
+        let all_tools = tools();
+        assert!(!all_tools.is_empty());
+
+        let mut checked_writer = false;
+        for tool in &all_tools {
+            let name = tool["name"].as_str().expect("tool name");
+            let has_output_path = tool["inputSchema"]["properties"]
+                .as_object()
+                .map(|props| props.contains_key("output_path"))
+                .unwrap_or(false);
+            let read_only_hint = tool["annotations"]["readOnlyHint"]
+                .as_bool()
+                .expect("readOnlyHint present");
+
+            if has_output_path {
+                checked_writer = true;
+                assert!(
+                    !read_only_hint,
+                    "tool '{name}' accepts output_path but is marked readOnlyHint: true"
+                );
+            }
+        }
+
+        // Sanity check that the assertion above actually exercised at least
+        // one writer tool (e.g. surp_v1_decode, surp_v1_text_pretty,
+        // surp_v1_binary_to_text, surp_rfc001_normalize_ctn,
+        // surp_rfc001_cbf_to_ctn).
+        assert!(
+            checked_writer,
+            "expected at least one tool with output_path in its schema"
+        );
     }
 }

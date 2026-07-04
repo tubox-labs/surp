@@ -716,9 +716,18 @@ fn json_values(args: &Map<String, Json>, security: &SecurityConfig) -> Result<Ve
     }
 
     if let Some(value) = args.get("value") {
+        // Inline JSON arguments bypass the text/input_path size checks
+        // below unless we measure them here too; otherwise a compromised
+        // or malicious MCP client could pass an arbitrarily large or
+        // deeply nested inline value straight through to
+        // surp_core::Value construction.
+        let size = serde_json::to_vec(value)?.len();
+        security.assert_text_size(size)?;
         return Ok(vec![value.clone()]);
     }
     if let Some(values) = args.get("values") {
+        let size = serde_json::to_vec(values)?.len();
+        security.assert_text_size(size)?;
         return values
             .as_array()
             .cloned()
@@ -1462,5 +1471,38 @@ mod tests {
         let value = rfc001::Scalar::Bytes(vec![0xde, 0xad]);
         let encoded = rfc_scalar_to_json(&value);
         assert_eq!(encoded["value_base64"], "3q0=");
+    }
+
+    #[test]
+    fn inline_value_exceeding_max_text_bytes_is_rejected() {
+        let mut security = SecurityConfig::from_env().unwrap();
+        security.max_text_bytes = 16;
+
+        let args = json!({"value": "x".repeat(1024)});
+        let args = args.as_object().unwrap();
+        let err = json_values(args, &security).expect_err("oversized inline value must be rejected");
+        assert!(matches!(err, OpError::Security(SecurityError::PayloadTooLarge { .. })));
+    }
+
+    #[test]
+    fn inline_values_array_exceeding_max_text_bytes_is_rejected() {
+        let mut security = SecurityConfig::from_env().unwrap();
+        security.max_text_bytes = 16;
+
+        let args = json!({"values": vec!["x".repeat(1024); 5]});
+        let args = args.as_object().unwrap();
+        let err =
+            json_values(args, &security).expect_err("oversized inline values must be rejected");
+        assert!(matches!(err, OpError::Security(SecurityError::PayloadTooLarge { .. })));
+    }
+
+    #[test]
+    fn call_tool_rejects_oversized_inline_value_end_to_end() {
+        let mut security = SecurityConfig::from_env().unwrap();
+        security.max_text_bytes = 16;
+
+        let args = json!({"value": "x".repeat(1024)});
+        let result = call_tool("surp_v1_encode_json", &args, &security);
+        assert!(result.is_err(), "expected oversized inline value to be rejected");
     }
 }

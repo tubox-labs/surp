@@ -37,6 +37,12 @@ pub struct SecurityConfig {
     pub max_input_bytes: usize,
     pub max_inline_bytes: usize,
     pub max_text_bytes: usize,
+    /// Maximum accepted length, in bytes, of a single raw JSON-RPC message
+    /// (one stdin line) before it is even handed to the JSON parser. This
+    /// bounds worst-case memory/parse cost from a single pathological
+    /// request, independent of the per-argument limits above which only
+    /// apply after a message has already been parsed.
+    pub max_line_bytes: usize,
 }
 
 impl SecurityConfig {
@@ -59,6 +65,11 @@ impl SecurityConfig {
             max_input_bytes: env_usize("SURP_MCP_MAX_INPUT_BYTES", 16 * 1024 * 1024),
             max_inline_bytes: env_usize("SURP_MCP_MAX_INLINE_BYTES", 4 * 1024 * 1024),
             max_text_bytes: env_usize("SURP_MCP_MAX_TEXT_BYTES", 4 * 1024 * 1024),
+            // A raw RPC line can legitimately contain a base64-encoded
+            // payload up to max_input_bytes (~1.34x inflation) plus JSON
+            // envelope overhead, so give it generous headroom over
+            // max_input_bytes while still bounding worst-case size.
+            max_line_bytes: env_usize("SURP_MCP_MAX_LINE_BYTES", 32 * 1024 * 1024),
         })
     }
 
