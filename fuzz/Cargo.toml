@@ -75,3 +75,24 @@ path = "fuzz_targets/fuzz_dedup.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_ctn"
+path = "fuzz_targets/fuzz_ctn.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_cbf"
+path = "fuzz_targets/fuzz_cbf.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_cql"
+path = "fuzz_targets/fuzz_cql.rs"
+test = false
+doc = false
+bench = false

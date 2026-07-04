@@ -41,6 +41,7 @@ fuzz_target!(|input: LimitsInput| {
         max_items,
         max_memory: 4 * 1024 * 1024, // 4 MiB
         max_string_length: max_string,
+        ..surp_core::Limits::default()
     };
 
     // Build a value that might violate the limits

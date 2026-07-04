@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 env:
   CARGO_TERM_COLOR: always
@@ -142,6 +142,27 @@ jobs:
 
       - name: Fuzz block (30s)
         run: cargo +nightly fuzz run fuzz_block -- -max_total_time=30 -max_len=4096
+
+      - name: Fuzz dedup (30s)
+        run: cargo +nightly fuzz run fuzz_dedup -- -max_total_time=30 -max_len=4096
+
+      - name: Fuzz compress corrupt (30s)
+        run: cargo +nightly fuzz run fuzz_compress_corrupt -- -max_total_time=30 -max_len=4096
+
+      - name: Fuzz string dict (30s)
+        run: cargo +nightly fuzz run fuzz_string_dict -- -max_total_time=30 -max_len=4096
+
+      - name: Fuzz limits (30s)
+        run: cargo +nightly fuzz run fuzz_limits -- -max_total_time=30 -max_len=4096
+
+      - name: Fuzz CTN (30s)
+        run: cargo +nightly fuzz run fuzz_ctn -- -max_total_time=30 -max_len=4096
+
+      - name: Fuzz CBF (30s)
+        run: cargo +nightly fuzz run fuzz_cbf -- -max_total_time=30 -max_len=4096
+
+      - name: Fuzz CQL (30s)
+        run: cargo +nightly fuzz run fuzz_cql -- -max_total_time=30 -max_len=4096
 
   security-audit:
     name: Security Audit
