@@ -1,6 +1,6 @@
 [package]
 name = "surp-bench"
-version = "1.0.2"
+version = "1.2.0"
 edition = "2024"
 publish = false
 description = "Regression benchmark harness for the Surp serialization ecosystem"

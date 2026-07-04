@@ -30,7 +30,7 @@ Surp is a Rust-backed serialization toolkit with two related paths:
 
 ## Status
 
-Current release target: `v1.0.2`.
+Current release target: `v1.2.0`.
 
 The v1 wire format remains the stable compatibility surface. RFC-001 is
 additive and lives in a separate namespace; RFC-001 CBF files are not the same
@@ -44,8 +44,8 @@ Use the Rust API from crates.io:
 
 ```toml
 [dependencies]
-surp-core = "1.0.2"
-surp-derive = "1.0.2"
+surp-core = "1.2.0"
+surp-derive = "1.2.0"
 ```
 
 For repository examples or local development, use path dependencies:
@@ -479,9 +479,9 @@ cd surp-python
 maturin develop --release
 python -m pytest tests/ -v
 cd ..
-cargo run -p surp-bench --release -- --mode full --output docs/assets/bench/v1.0.2 --version v1.0.2
-git tag v1.0.2
-gh release create v1.0.2 --title "Surp v1.0.2" --notes-file .github/releases/v1.0.2.md
+cargo run -p surp-bench --release -- --mode full --output docs/assets/bench/v1.2.0 --version v1.2.0
+git tag v1.2.0
+gh release create v1.2.0 --title "Surp v1.2.0: Ahoy, Matey!" --notes-file .github/releases/v1.2.0.md
 ```
 
 ## More Documentation

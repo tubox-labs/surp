@@ -164,7 +164,7 @@ export function AskAI() {
               <div className="text-[13px] font-semibold text-ink leading-tight">Surp Docs Assistant</div>
               <div className="text-[11px] text-muted leading-tight flex items-center gap-1.5">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" />
-                Grounded · v1.0.2 · streaming
+                Grounded · v1.2.0 · streaming
               </div>
             </div>
             <div className="ml-auto flex items-center gap-1">

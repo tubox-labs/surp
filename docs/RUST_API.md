@@ -1,6 +1,6 @@
 # Surp Rust API
 
-Version: 1.0.2
+Version: 1.2.0
 Edition: 2024
 MSRV: 1.85.0
 License: MIT OR Apache-2.0
@@ -27,7 +27,7 @@ modules.
 
 ```toml
 [dependencies]
-surp-core = "1.0.2"
+surp-core = "1.2.0"
 ```
 
 For local examples in this repository, use path dependencies:

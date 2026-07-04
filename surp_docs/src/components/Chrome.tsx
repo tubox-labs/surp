@@ -12,7 +12,7 @@ export function TopNav() {
       <div className="mx-auto max-w-[1200px] h-16 px-5 sm:px-8 flex items-center gap-6">
         <Link to="/" className="flex items-baseline gap-2 group">
           <span className="text-[22px] font-display tracking-tight text-ink">Surp</span>
-          <span className="text-[10px] eyebrow text-primary group-hover:opacity-80">v1.0.2</span>
+          <span className="text-[10px] eyebrow text-primary group-hover:opacity-80">v1.2.0</span>
         </Link>
         <nav className="hidden md:flex items-center gap-7 text-[14px] font-medium text-body ml-3">
           <NavLink to="/docs">Docs</NavLink>

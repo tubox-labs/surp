@@ -1225,7 +1225,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "surp-bench"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "chrono",
  "ciborium",
@@ -1243,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "surp-cli"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1257,7 +1257,7 @@ dependencies = [
 
 [[package]]
 name = "surp-compression"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "lz4_flex",
  "snap",
@@ -1268,7 +1268,7 @@ dependencies = [
 
 [[package]]
 name = "surp-core"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "base64",
  "bumpalo",
@@ -1285,7 +1285,7 @@ dependencies = [
 
 [[package]]
 name = "surp-derive"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1297,7 +1297,7 @@ dependencies = [
 
 [[package]]
 name = "surp-examples"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "surp-core",
  "surp-derive",
@@ -1305,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "surp-ffi"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "serde_json",
  "surp-core",
@@ -1313,7 +1313,7 @@ dependencies = [
 
 [[package]]
 name = "surp-io"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "bytes",
  "memmap2",
@@ -1324,7 +1324,7 @@ dependencies = [
 
 [[package]]
 name = "surp-mcp"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "base64",
  "serde",
@@ -1335,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "surp-python"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "pyo3",
  "surp-core",
@@ -1343,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "surp-simd"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "criterion",
  "surp-core",

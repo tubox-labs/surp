@@ -1,33 +1,23 @@
-# Surp v1.0.2 Release Notes
+# Surp v1.2.0 Release Notes: Ahoy, Matey!
 
-Surp `v1.0.2` is a patch release for the Python `surp.model` layer. It fixes
-Python 3.14 annotation collection, resolves invalid type-form warnings in the
-public model stubs, adds the missing stable v1 model decode path, and refreshes
-developer docstrings for the affected model APIs.
+Surp `v1.2.0` documents the current repository architecture and captures the
+active defect inventory across the Rust workspace, Python binding layer, CLI,
+FFI surface, and MCP server.
 
 ## Release Title
 
-Surp v1.0.2
+Surp v1.2.0: Ahoy, Matey!
 
 ## Highlights
 
-- Fixes `SurpModelMeta` on Python 3.14, where ordinary class annotations may be
-  stored lazily and were not always visible through the class namespace during
-  model creation.
-- Fixes Pylance/Pyright invalid type-form warnings for public model markers
-  such as `Int64`, `Str`, and `SeqOf[Str]` by making the shipped stubs valid
-  type expressions.
-- Adds `SurpModel.from_surp(data, *, validate=True)` as the inverse of
-  `SurpModel.to_surp()` for stable v1 Surp bytes.
-- Keeps CTN/CBF model decode behavior unchanged while adding the v1 dictionary
-  convenience decode path.
-- Rewrites affected `surp.model` function and class docstrings as raw
-  reStructuredText-style developer docstrings with explicit signatures and
-  examples.
-- Updates Python API docs, Python package README, and the v1 Python example for
-  `to_surp()` / `from_surp()` model round-trips.
-- Updates Rust workspace, Python package, example, and benchmark version
-  metadata to `1.0.2`.
+- Summarizes the current workspace split and the two parallel v1/RFC-001
+  pipelines.
+- Records the active critical, high, and medium/low defect inventory so the
+  release notes match the current engineering snapshot.
+- Confirms the Python data flow remains dict/list -> PyO3 -> `Value` ->
+  `Encoder` -> bytes -> `PyBytes`, with the GIL held for the whole path.
+- Notes that `surp-mcp` remains outside the Rust workspace and currently has
+  zero CI coverage.
 
 ## Benchmark Artifacts
 
@@ -51,10 +41,10 @@ git diff --check
 
 ## Notes
 
-- Release tag: `v1.0.2`
-- GitHub release title: `Surp v1.0.2`
+- Release tag: `v1.2.0`
+- GitHub release title: `Surp v1.2.0: Ahoy, Matey!`
 - The release notes used by `gh release create` live at
-  `.github/releases/v1.0.2.md`.
+  `.github/releases/v1.2.0.md`.
 - v1 wire compatibility is unchanged.
 - RFC-001 remains additive and separate from v1 `.surp` files.
 
