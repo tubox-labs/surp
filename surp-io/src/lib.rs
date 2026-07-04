@@ -57,13 +57,33 @@ pub struct FramedReader<R: AsyncRead + Unpin> {
     reader: R,
     #[allow(dead_code)]
     buf: Vec<u8>,
+    max_block_size: usize,
 }
 
 impl<R: AsyncRead + Unpin> FramedReader<R> {
+    /// Create a reader using the default resource limits
+    /// (`surp_core::Limits::default().max_block_size`) as the cap on a
+    /// single block's declared payload length.
     pub fn new(reader: R) -> Self {
+        Self::with_max_block_size(reader, surp_core::Limits::default().max_block_size)
+    }
+
+    /// Create a reader bounded by the `max_block_size` of the given `Limits`.
+    ///
+    /// This keeps `FramedReader` consistent with `surp_core::Decoder`, which
+    /// enforces `Limits::max_block_size` before trusting a stream-supplied
+    /// length.
+    pub fn with_limits(reader: R, limits: &surp_core::Limits) -> Self {
+        Self::with_max_block_size(reader, limits.max_block_size)
+    }
+
+    /// Create a reader with an explicit cap (in bytes) on a single block's
+    /// declared payload length.
+    pub fn with_max_block_size(reader: R, max_block_size: usize) -> Self {
         Self {
             reader,
             buf: Vec::with_capacity(4096),
+            max_block_size,
         }
     }
 
@@ -77,9 +97,7 @@ impl<R: AsyncRead + Unpin> FramedReader<R> {
             Err(e) => return Err(e.into()),
         }
 
-        if type_buf[0] == BlockType::Trailer as u8 {
-            return Ok(None);
-        }
+        let is_trailer = type_buf[0] == BlockType::Trailer as u8;
 
         // Read varint length (up to 10 bytes, 1 at a time for streaming).
         let mut len_bytes = Vec::with_capacity(10);
@@ -99,10 +117,24 @@ impl<R: AsyncRead + Unpin> FramedReader<R> {
         let block_len =
             usize::try_from(block_len).map_err(|_| SurpError::LengthOverflow(block_len))?;
 
+        // Reject oversized blocks *before* allocating the payload buffer, to
+        // avoid a memory-exhaustion DoS from a malicious/corrupt peer sending
+        // an enormous declared length.
+        if block_len > self.max_block_size {
+            return Err(SurpError::BlockTooLarge(block_len, self.max_block_size));
+        }
+
         // Read compression type (1 byte) + checksum (8 bytes) + payload.
         let remaining = 1 + 8 + block_len;
         let mut payload = vec![0u8; remaining];
         self.reader.read_exact(&mut payload).await?;
+
+        if is_trailer {
+            // Fully consume the trailer's bytes so a reused `FramedReader`
+            // (multi-document stream) stays in sync, but signal EOF to the
+            // caller as before.
+            return Ok(None);
+        }
 
         // Reconstruct the full block bytes.
         let mut block = Vec::with_capacity(1 + len_bytes.len() + remaining);
@@ -250,5 +282,67 @@ mod tests {
         let bytes = write_values_to_bytes(&values).unwrap();
         let decoded = read_file_bytes(&bytes).unwrap();
         assert_eq!(decoded, values);
+    }
+
+    #[tokio::test]
+    async fn framed_reader_round_trip() {
+        let mut buf = Vec::new();
+        {
+            let mut writer = FramedWriter::new(&mut buf);
+            writer.write_data(b"hello").await.unwrap();
+            writer.write_data(b"world").await.unwrap();
+            writer.flush().await.unwrap();
+        }
+
+        let mut reader = FramedReader::new(buf.as_slice());
+        let block1 = reader.read_next_block_raw().await.unwrap().unwrap();
+        assert_eq!(block1[0], BlockType::Data as u8);
+        let block2 = reader.read_next_block_raw().await.unwrap().unwrap();
+        assert_eq!(block2[0], BlockType::Data as u8);
+        assert_ne!(block1, block2);
+
+        // Stream is exhausted (no trailer was written here, so this hits EOF).
+        let end = reader.read_next_block_raw().await.unwrap();
+        assert!(end.is_none());
+    }
+
+    #[tokio::test]
+    async fn framed_reader_rejects_oversized_block_before_allocating() {
+        // Build a stream declaring a block length far larger than our cap,
+        // without ever supplying the (huge amount of) trailing bytes. If the
+        // reader tried to allocate/read the declared length first, this
+        // would hang waiting on `read_exact` or attempt a huge allocation
+        // instead of failing fast.
+        let mut stream = Vec::new();
+        stream.push(BlockType::Data as u8);
+        // Declare an obviously-oversized block length.
+        surp_core::varint::encode_varint_vec(4 * 1024 * 1024 * 1024, &mut stream);
+        // Intentionally do NOT append compression byte / checksum / payload.
+
+        let max_block_size = 1024; // 1 KiB cap, far below the declared length.
+        let mut reader = FramedReader::with_max_block_size(stream.as_slice(), max_block_size);
+
+        let result = reader.read_next_block_raw().await;
+        assert!(
+            matches!(
+                result,
+                Err(SurpError::BlockTooLarge(_, cap)) if cap == max_block_size
+            ),
+            "expected BlockTooLarge error, got: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn framed_reader_accepts_block_within_custom_cap() {
+        let mut buf = Vec::new();
+        {
+            let mut writer = FramedWriter::new(&mut buf);
+            writer.write_data(b"small payload").await.unwrap();
+            writer.flush().await.unwrap();
+        }
+
+        let mut reader = FramedReader::with_max_block_size(buf.as_slice(), 4096);
+        let block = reader.read_next_block_raw().await.unwrap().unwrap();
+        assert_eq!(block[0], BlockType::Data as u8);
     }
 }
