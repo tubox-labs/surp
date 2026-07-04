@@ -127,7 +127,7 @@ fn gen_small_objects_n(n: usize) -> Dataset {
                 ),
                 (
                     "active".into(),
-                    Value::Bool(rng.next_u32().is_multiple_of(2)),
+                    Value::Bool(rng.next_u32() % 2 == 0),
                 ),
                 ("score".into(), Value::Float(rng.next_u32() as f64 / 100.0)),
                 ("level".into(), Value::UInt(rng.next_range(100))),
@@ -196,7 +196,7 @@ fn gen_nested_deep() -> Dataset {
             return match rng.next_range(3) {
                 0 => Value::UInt(rng.next_range(10000)),
                 1 => Value::Str(rng.next_string(10)),
-                _ => Value::Bool(rng.next_u32().is_multiple_of(2)),
+                _ => Value::Bool(rng.next_u32() % 2 == 0),
             };
         }
         let children: Vec<Value> = (0..3)

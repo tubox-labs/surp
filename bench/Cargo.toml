@@ -16,7 +16,6 @@ sha2 = "0.10"
 clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 csv = "1"
-tabled = "0.18"
 
 # Tracking allocator (optional, Linux/macOS)
 [target.'cfg(not(target_os = "windows"))'.dependencies]

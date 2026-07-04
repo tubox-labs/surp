@@ -51,6 +51,6 @@ base64 = "0.22"
 # Zero-copy shared buffers: https://docs.rs/bytes
 bytes = "1.10"
 # Memory-mapped I/O: https://docs.rs/memmap2
-memmap2 = "0.9"
+memmap2 = "0.9.11"
 # Bump allocator for per-block decode scratch: https://docs.rs/bumpalo
 bumpalo = "3.17"

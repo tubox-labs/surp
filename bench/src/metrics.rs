@@ -328,21 +328,21 @@ pub fn detect_regressions(
         }
 
         // 2. Size regression.
-        if let (Some(base_size), Some(cur_size)) = (base.serialized_size, cur.serialized_size)
-            && base_size > 0
-        {
-            let change = (cur_size as f64 - base_size as f64) / base_size as f64;
-            if change > thresholds.max_size_increase {
-                regressions.push(Regression {
-                    format: cur.format.clone(),
-                    dataset: cur.dataset.clone(),
-                    metric: "serialized_size".into(),
-                    baseline_value: base_size as f64,
-                    current_value: cur_size as f64,
-                    change_pct: change * 100.0,
-                    threshold_pct: thresholds.max_size_increase * 100.0,
-                    severity: Severity::Failure,
-                });
+        if let (Some(base_size), Some(cur_size)) = (base.serialized_size, cur.serialized_size) {
+            if base_size > 0 {
+                let change = (cur_size as f64 - base_size as f64) / base_size as f64;
+                if change > thresholds.max_size_increase {
+                    regressions.push(Regression {
+                        format: cur.format.clone(),
+                        dataset: cur.dataset.clone(),
+                        metric: "serialized_size".into(),
+                        baseline_value: base_size as f64,
+                        current_value: cur_size as f64,
+                        change_pct: change * 100.0,
+                        threshold_pct: thresholds.max_size_increase * 100.0,
+                        severity: Severity::Failure,
+                    });
+                }
             }
         }
 
@@ -370,21 +370,21 @@ pub fn detect_regressions(
         }
 
         // 4. Memory regression.
-        if let (Some(base_mem), Some(cur_mem)) = (base.peak_rss_bytes, cur.peak_rss_bytes)
-            && base_mem > 0
-        {
-            let change = (cur_mem as f64 - base_mem as f64) / base_mem as f64;
-            if change > thresholds.max_memory_increase {
-                regressions.push(Regression {
-                    format: cur.format.clone(),
-                    dataset: cur.dataset.clone(),
-                    metric: "peak_rss_bytes".into(),
-                    baseline_value: base_mem as f64,
-                    current_value: cur_mem as f64,
-                    change_pct: change * 100.0,
-                    threshold_pct: thresholds.max_memory_increase * 100.0,
-                    severity: Severity::Failure,
-                });
+        if let (Some(base_mem), Some(cur_mem)) = (base.peak_rss_bytes, cur.peak_rss_bytes) {
+            if base_mem > 0 {
+                let change = (cur_mem as f64 - base_mem as f64) / base_mem as f64;
+                if change > thresholds.max_memory_increase {
+                    regressions.push(Regression {
+                        format: cur.format.clone(),
+                        dataset: cur.dataset.clone(),
+                        metric: "peak_rss_bytes".into(),
+                        baseline_value: base_mem as f64,
+                        current_value: cur_mem as f64,
+                        change_pct: change * 100.0,
+                        threshold_pct: thresholds.max_memory_increase * 100.0,
+                        severity: Severity::Failure,
+                    });
+                }
             }
         }
 

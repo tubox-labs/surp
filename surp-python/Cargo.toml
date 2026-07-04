@@ -17,4 +17,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 surp-core = { workspace = true }
-pyo3 = { version = "0.28", features = ["extension-module"] }
+pyo3 = { version = "0.29", features = ["extension-module"] }
