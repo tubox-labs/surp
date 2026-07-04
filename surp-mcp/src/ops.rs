@@ -3,8 +3,6 @@ use std::collections::BTreeMap;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::{Map, Number, Value as Json, json};
-use surp_core::block::BlockReader;
-use surp_core::checksum::compute_xxh64;
 use surp_core::rfc001;
 use surp_core::wire::{BlockType, CompressionType};
 use surp_core::{Decoder, Encoder, Limits, Value};
@@ -528,9 +526,7 @@ fn rfc001_query_ctn(
     let query = required_str(args, "query")?;
     let input = read_text(args, security)?;
     let doc = rfc001::parse_document(&input.text)?;
-    let bytes = rfc001::encode_document(&doc, rfc001::EncodeOptions::default())?;
-    let decoded = rfc001::decode_document(&bytes)?;
-    let root = decoded.document.effective_root()?;
+    let root = doc.effective_root()?;
     let results = rfc001::query(&root, query)?;
     rfc_query_outcome(
         query,
@@ -963,58 +959,40 @@ fn render_json_values(values: &[Json], style: &str) -> Result<String, OpError> {
     })
 }
 
+/// Thin wrapper around the shared `surp_core::block::inspect` algorithm,
+/// reshaping its `BlockReport` into this tool's JSON output shape.
 fn analyze_blocks_json(data: &[u8]) -> Result<Json, OpError> {
-    let mut blocks = Vec::new();
-    let mut trailer = Json::Null;
-    let mut offset = 0usize;
-    let mut index = 0usize;
+    let report = surp_core::block::inspect(data)?;
 
-    while offset < data.len() {
-        let block_offset = offset;
-        let (block, consumed) = BlockReader::parse(data, offset).map_err(|err| {
-            OpError::Message(format!(
-                "failed to parse block #{index} at offset {offset}: {err}"
-            ))
-        })?;
-        offset += consumed;
-
-        let payload_checksum_valid = if block.compression == CompressionType::None
-            || block.block_type == BlockType::Trailer
-        {
-            Json::Bool(block.verify_checksum())
-        } else {
-            Json::Null
-        };
-
-        if block.block_type == BlockType::Trailer {
-            let file_checksum_valid = if block.payload.len() == 8 {
-                let mut expected_bytes = [0u8; 8];
-                expected_bytes.copy_from_slice(block.payload);
-                let expected = u64::from_le_bytes(expected_bytes);
-                let actual = compute_xxh64(&data[..block_offset]);
-                expected == actual
-            } else {
-                false
+    let blocks: Vec<Json> = report
+        .blocks
+        .into_iter()
+        .map(|block| {
+            let payload_checksum_valid = match block.payload_checksum_valid {
+                Some(valid) => Json::Bool(valid),
+                None => Json::Null,
             };
-            trailer = json!({
-                "payload_checksum_valid": block.verify_checksum(),
-                "file_checksum_valid": file_checksum_valid,
-            });
-        }
+            json!({
+                "index": block.index,
+                "offset": block.offset,
+                "block_type": block_type_name(block.block_type),
+                "compression": compression_name(block.compression),
+                "payload_len": block.payload_len,
+                "payload_checksum_valid": payload_checksum_valid,
+            })
+        })
+        .collect();
 
-        blocks.push(json!({
-            "index": index,
-            "offset": block_offset,
-            "block_type": block_type_name(block.block_type),
-            "compression": compression_name(block.compression),
-            "payload_len": block.payload.len(),
-            "payload_checksum_valid": payload_checksum_valid,
-        }));
-        index += 1;
-    }
+    let trailer = match report.trailer {
+        Some(trailer) => json!({
+            "payload_checksum_valid": trailer.payload_checksum_valid,
+            "file_checksum_valid": trailer.file_checksum_valid,
+        }),
+        None => Json::Null,
+    };
 
     Ok(json!({
-        "file_size": data.len(),
+        "file_size": report.file_size,
         "blocks": blocks,
         "trailer": trailer,
     }))

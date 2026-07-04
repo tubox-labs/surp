@@ -4,8 +4,6 @@ use std::io::{self, IsTerminal, Read, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use surp_core::block::BlockReader;
-use surp_core::checksum::compute_xxh64;
 use surp_core::rfc001;
 use surp_core::wire::{BlockType, CompressionType};
 use surp_core::{Decoder, Encoder, Limits, Value};
@@ -824,59 +822,33 @@ fn unsupported_compression_error(compression: CompressionArg) -> CliError {
     ))
 }
 
+/// Thin wrapper around the shared `surp_core::block::inspect` algorithm,
+/// reshaping its `BlockReport` into this crate's own `InspectReport` struct
+/// (identical fields, kept separate so the CLI's output shape isn't coupled
+/// to surp-core's internal representation).
 fn analyze_blocks(data: &[u8]) -> CliResult<InspectReport> {
-    let mut blocks = Vec::new();
-    let mut trailer = None;
+    let report = surp_core::block::inspect(data)?;
 
-    let mut offset = 0usize;
-    let mut index = 0usize;
-    while offset < data.len() {
-        let block_offset = offset;
-        let (block, consumed) = BlockReader::parse(data, offset).map_err(|err| {
-            CliError::message(format!(
-                "Failed to parse block #{index} at offset {offset}: {err}"
-            ))
-        })?;
-        offset += consumed;
-
-        let payload_checksum_valid = if block.compression == CompressionType::None
-            || block.block_type == BlockType::Trailer
-        {
-            Some(block.verify_checksum())
-        } else {
-            None
-        };
-
-        if block.block_type == BlockType::Trailer {
-            let file_checksum_valid = if block.payload.len() == 8 {
-                let mut expected_bytes = [0u8; 8];
-                expected_bytes.copy_from_slice(block.payload);
-                let expected = u64::from_le_bytes(expected_bytes);
-                let actual = compute_xxh64(&data[..block_offset]);
-                expected == actual
-            } else {
-                false
-            };
-
-            trailer = Some(TrailerSummary {
-                payload_checksum_valid: block.verify_checksum(),
-                file_checksum_valid,
-            });
-        }
-
-        blocks.push(BlockSummary {
-            index,
-            offset: block_offset,
+    let blocks = report
+        .blocks
+        .into_iter()
+        .map(|block| BlockSummary {
+            index: block.index,
+            offset: block.offset,
             block_type: block.block_type,
             compression: block.compression,
-            payload_len: block.payload.len(),
-            payload_checksum_valid,
-        });
-        index += 1;
-    }
+            payload_len: block.payload_len,
+            payload_checksum_valid: block.payload_checksum_valid,
+        })
+        .collect();
+
+    let trailer = report.trailer.map(|trailer| TrailerSummary {
+        payload_checksum_valid: trailer.payload_checksum_valid,
+        file_checksum_valid: trailer.file_checksum_valid,
+    });
 
     Ok(InspectReport {
-        file_size: data.len(),
+        file_size: report.file_size,
         blocks,
         trailer,
     })
