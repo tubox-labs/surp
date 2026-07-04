@@ -32,7 +32,12 @@ use syn::{Attribute, Data, DeriveInput, Fields, Lit, parse_macro_input};
 /// `derive_surp_schema` always reported `0`), which made `schema_info()`
 /// lie about the id actually on the wire whenever an explicit id was
 /// omitted.
-fn resolve_field_id(attrs: &[Attribute], field_name: &str) -> u64 {
+///
+/// Any malformed `#[surp(...)]` attribute (an unknown key such as the typo
+/// `idd`, a missing `= value`, a non-integer literal, or an integer literal
+/// that doesn't fit in a `u64`) is surfaced as a `syn::Error` instead of
+/// being silently swallowed and falling back to the hash-derived id.
+fn resolve_field_id(attrs: &[Attribute], field_name: &str) -> syn::Result<u64> {
     let mut field_id: Option<u64> = None;
 
     for attr in attrs {
@@ -41,22 +46,63 @@ fn resolve_field_id(attrs: &[Attribute], field_name: &str) -> u64 {
                 if meta.path.is_ident("id") {
                     let value = meta.value()?;
                     let lit: Lit = value.parse()?;
-                    if let Lit::Int(lit_int) = lit {
-                        field_id = Some(lit_int.base10_parse().unwrap());
+                    match lit {
+                        Lit::Int(lit_int) => {
+                            let parsed: u64 = lit_int.base10_parse().map_err(|e| {
+                                syn::Error::new_spanned(
+                                    &lit_int,
+                                    format!(
+                                        "invalid Surp field id `{}`: {e}",
+                                        lit_int.base10_digits()
+                                    ),
+                                )
+                            })?;
+                            field_id = Some(parsed);
+                            Ok(())
+                        }
+                        other => Err(syn::Error::new_spanned(
+                            other,
+                            "Surp field id must be an unsigned integer literal, e.g. `#[surp(id = 1)]`",
+                        )),
                     }
+                } else {
+                    Err(meta.error(
+                        "unknown key in `#[surp(...)]` attribute; expected `id = N`",
+                    ))
                 }
-                Ok(())
-            })
-            .ok();
+            })?;
         }
     }
 
-    field_id.unwrap_or_else(|| {
+    Ok(field_id.unwrap_or_else(|| {
         // If no explicit id, use hash of field name as fallback.
         // This is not recommended but provides a default.
         let hash = xxhash_rust::xxh64::xxh64(field_name.as_bytes(), 0);
         hash & 0xFFFF // Use lower 16 bits.
-    })
+    }))
+}
+
+/// Check a struct's resolved field ids (explicit or hash-fallback) for
+/// duplicates. Two fields sharing the same wire id would silently corrupt
+/// the "stable field id" guarantee: they'd collide on the same wire key and
+/// on the same contribution to `schema_fingerprint`/`schema_info()`.
+///
+/// `fields` is `(field_ident, field_name, resolved_id)`; the error is
+/// spanned at the *second* field carrying a given id (i.e. the field whose
+/// id first collides with an earlier one), so the diagnostic points at the
+/// offending duplicate rather than the whole struct.
+fn check_duplicate_ids(fields: &[(&syn::Ident, &str, u64)]) -> syn::Result<()> {
+    for (i, (ident, _name, id)) in fields.iter().enumerate() {
+        for (other_name, other_id) in fields[..i].iter().map(|(_, n, id)| (*n, *id)) {
+            if *id == other_id {
+                return Err(syn::Error::new_spanned(
+                    ident,
+                    format!("duplicate Surp field id {id} (also used by field `{other_name}`)"),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Derive the `Surp` trait for a struct, generating encode/decode
@@ -73,9 +119,20 @@ pub fn derive_surp(input: TokenStream) -> TokenStream {
     let fields = match &input.data {
         Data::Struct(data) => match &data.fields {
             Fields::Named(fields) => &fields.named,
-            _ => panic!("Surp derive only supports structs with named fields"),
+            Fields::Unnamed(_) | Fields::Unit => {
+                return syn::Error::new_spanned(
+                    &input.ident,
+                    "Surp derive only supports structs with named fields",
+                )
+                .to_compile_error()
+                .into();
+            }
         },
-        _ => panic!("Surp derive only supports structs"),
+        Data::Enum(_) | Data::Union(_) => {
+            return syn::Error::new_spanned(&input.ident, "Surp derive only supports structs")
+                .to_compile_error()
+                .into();
+        }
     };
 
     // Extract field names and their surp(id = N) attributes.
@@ -83,9 +140,21 @@ pub fn derive_surp(input: TokenStream) -> TokenStream {
     for field in fields {
         let field_name = field.ident.as_ref().unwrap();
         let field_name_str = field_name.to_string();
-        let id = resolve_field_id(&field.attrs, &field_name_str);
+        let id = match resolve_field_id(&field.attrs, &field_name_str) {
+            Ok(id) => id,
+            Err(err) => return err.to_compile_error().into(),
+        };
 
         field_infos.push((field_name.clone(), field_name_str, id));
+    }
+
+    if let Err(err) = check_duplicate_ids(
+        &field_infos
+            .iter()
+            .map(|(ident, name, id)| (ident, name.as_str(), *id))
+            .collect::<Vec<_>>(),
+    ) {
+        return err.to_compile_error().into();
     }
 
     // Generate schema fingerprint from type name + field IDs.
@@ -208,19 +277,45 @@ pub fn derive_surp_schema(input: TokenStream) -> TokenStream {
     let fields = match &input.data {
         Data::Struct(data) => match &data.fields {
             Fields::Named(fields) => &fields.named,
-            _ => panic!("SurpSchema only supports structs with named fields"),
+            Fields::Unnamed(_) | Fields::Unit => {
+                return syn::Error::new_spanned(
+                    &input.ident,
+                    "SurpSchema only supports structs with named fields",
+                )
+                .to_compile_error()
+                .into();
+            }
         },
-        _ => panic!("SurpSchema only supports structs"),
+        Data::Enum(_) | Data::Union(_) => {
+            return syn::Error::new_spanned(&input.ident, "SurpSchema only supports structs")
+                .to_compile_error()
+                .into();
+        }
     };
 
+    let mut field_ids = Vec::new();
     let mut field_entries = Vec::new();
     for field in fields {
-        let fname = field.ident.as_ref().unwrap().to_string();
-        let fid = resolve_field_id(&field.attrs, &fname);
+        let ident = field.ident.as_ref().unwrap();
+        let fname = ident.to_string();
+        let fid = match resolve_field_id(&field.attrs, &fname) {
+            Ok(id) => id,
+            Err(err) => return err.to_compile_error().into(),
+        };
 
+        field_ids.push((ident.clone(), fname.clone(), fid));
         field_entries.push(quote! {
             (#fname, #fid)
         });
+    }
+
+    if let Err(err) = check_duplicate_ids(
+        &field_ids
+            .iter()
+            .map(|(ident, name, id)| (ident, name.as_str(), *id))
+            .collect::<Vec<_>>(),
+    ) {
+        return err.to_compile_error().into();
     }
 
     let expanded = quote! {
