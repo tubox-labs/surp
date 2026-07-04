@@ -11,9 +11,9 @@
 //! |-----------|---------------|-------|
 //! | `bool` | `Bool` | |
 //! | `u8`, `u16`, `u32`, `u64`, `usize` | `UInt` | widened to `u64` |
-//! | `u128` | `UInt` | panics if value > `u64::MAX` |
+//! | `u128` | `UInt` | **lossy**: saturates to `u64::MAX` if value exceeds it (never panics) |
 //! | `i8`, `i16`, `i32`, `i64`, `isize` | `Int` | widened to `i64` |
-//! | `i128` | `Int` | panics if value outside `i64` range |
+//! | `i128` | `Int` | **lossy**: saturates to `i64::MAX`/`i64::MIN` if value is outside `i64` range (never panics) |
 //! | `f32`, `f64` | `Float` | `f32` widened to `f64` |
 //! | `String`, `Box<str>` | `Str` | |
 //! | `Vec<u8>` | `Array` of `UInt` | use [`SurpBytes`] for `Value::Bytes` |
@@ -205,10 +205,21 @@ impl Surp for usize {
     }
 }
 
-// u128: encode as UInt, but panics on encode if > u64::MAX
+// u128: encode as UInt, saturating to u64::MAX on overflow (lossy but never panics).
 impl Surp for u128 {
+    /// Convert to a Surp `Value::UInt`.
+    ///
+    /// # Lossy saturation
+    ///
+    /// The Surp wire format has no native 128-bit integer type, so values are
+    /// widened to `u64`. If `self` exceeds `u64::MAX`, the value is
+    /// **saturated** to `Value::UInt(u64::MAX)` rather than panicking. This
+    /// is lossy — the original magnitude is not recoverable on decode — but
+    /// it avoids crashing on attacker- or user-influenced data reachable
+    /// through generic containers (`Vec<u128>`, `Option<u128>`,
+    /// `HashMap<String, u128>`, tuples, etc.).
     fn to_surp_value(&self) -> Value {
-        Value::UInt(u64::try_from(*self).expect("u128 value exceeds u64::MAX for Surp encoding"))
+        Value::UInt(u64::try_from(*self).unwrap_or(u64::MAX))
     }
 
     fn from_surp_value(value: &Value) -> Result<Self> {
@@ -314,10 +325,29 @@ impl Surp for isize {
     }
 }
 
-// i128: encode as Int, but panics on encode if outside i64 range
+// i128: encode as Int, saturating to i64::MIN/i64::MAX on overflow (lossy but never panics).
 impl Surp for i128 {
+    /// Convert to a Surp `Value::Int`.
+    ///
+    /// # Lossy saturation
+    ///
+    /// The Surp wire format has no native 128-bit integer type, so values are
+    /// narrowed to `i64`. If `self` falls outside the `i64` range, the value
+    /// is **saturated** to `Value::Int(i64::MAX)` or `Value::Int(i64::MIN)`
+    /// (whichever bound was exceeded) rather than panicking. This is lossy —
+    /// the original magnitude is not recoverable on decode — but it avoids
+    /// crashing on attacker- or user-influenced data reachable through
+    /// generic containers (`Vec<i128>`, `Option<i128>`,
+    /// `HashMap<String, i128>`, tuples, etc.).
     fn to_surp_value(&self) -> Value {
-        Value::Int(i64::try_from(*self).expect("i128 value exceeds i64 range for Surp encoding"))
+        let n = if *self > i128::from(i64::MAX) {
+            i64::MAX
+        } else if *self < i128::from(i64::MIN) {
+            i64::MIN
+        } else {
+            *self as i64
+        };
+        Value::Int(n)
     }
 
     fn from_surp_value(value: &Value) -> Result<Self> {
@@ -920,6 +950,31 @@ mod tests {
         let v: i128 = -123456;
         let val = v.to_surp_value();
         assert_eq!(i128::from_surp_value(&val).unwrap(), -123456);
+    }
+
+    #[test]
+    fn u128_max_saturates_instead_of_panicking() {
+        let v: u128 = u128::MAX;
+        let val = v.to_surp_value();
+        assert_eq!(val, Value::UInt(u64::MAX));
+        // Decodes back to the saturated bound, not the original magnitude.
+        assert_eq!(u128::from_surp_value(&val).unwrap(), u128::from(u64::MAX));
+    }
+
+    #[test]
+    fn i128_min_saturates_instead_of_panicking() {
+        let v: i128 = i128::MIN;
+        let val = v.to_surp_value();
+        assert_eq!(val, Value::Int(i64::MIN));
+        assert_eq!(i128::from_surp_value(&val).unwrap(), i128::from(i64::MIN));
+    }
+
+    #[test]
+    fn i128_max_saturates_instead_of_panicking() {
+        let v: i128 = i128::MAX;
+        let val = v.to_surp_value();
+        assert_eq!(val, Value::Int(i64::MAX));
+        assert_eq!(i128::from_surp_value(&val).unwrap(), i128::from(i64::MAX));
     }
 
     #[test]

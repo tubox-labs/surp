@@ -135,6 +135,12 @@ impl Encoder {
                 self.block_buf.extend_from_slice(&f.to_le_bytes());
             }
             Value::Str(s) => {
+                if s.len() > self.limits.max_string_length {
+                    return Err(SurpError::StringTooLong(
+                        s.len(),
+                        self.limits.max_string_length,
+                    ));
+                }
                 if self.dedup_strings {
                     if let Some(&idx) = self.string_dict.get(s.as_str()) {
                         // Emit a Reference to the dictionary entry.
@@ -153,6 +159,12 @@ impl Encoder {
                 self.block_buf.extend_from_slice(s.as_bytes());
             }
             Value::Bytes(b) => {
+                if b.len() > self.limits.max_string_length {
+                    return Err(SurpError::StringTooLong(
+                        b.len(),
+                        self.limits.max_string_length,
+                    ));
+                }
                 self.block_buf.push(WireType::LenDelimited.to_tag());
                 // Sub-type marker: 0x01 = raw binary
                 self.block_buf.push(0x01);
@@ -197,6 +209,12 @@ impl Encoder {
                 encode_varint_vec(entries.len() as u64, &mut self.block_buf);
                 self.depth += 1;
                 for (key, val) in entries {
+                    if key.len() > self.limits.max_string_length {
+                        return Err(SurpError::StringTooLong(
+                            key.len(),
+                            self.limits.max_string_length,
+                        ));
+                    }
                     // Encode key as a length-delimited string inline.
                     encode_varint_vec(key.len() as u64, &mut self.block_buf);
                     self.block_buf.extend_from_slice(key.as_bytes());
@@ -530,6 +548,41 @@ mod tests {
         // Nest 3 levels deep — should fail
         let val = Value::Array(vec![Value::Array(vec![Value::Array(vec![])])]);
         assert!(enc.encode_value(&val).is_err());
+    }
+
+    #[test]
+    fn encode_string_exceeding_max_string_length_errors_cleanly() {
+        let mut enc = Encoder::with_limits(Limits {
+            max_string_length: 8,
+            ..Limits::default()
+        });
+        let err = enc
+            .encode_value(&Value::Str("this string is way too long".into()))
+            .unwrap_err();
+        assert!(matches!(err, SurpError::StringTooLong(_, 8)));
+    }
+
+    #[test]
+    fn encode_bytes_exceeding_max_string_length_errors_cleanly() {
+        let mut enc = Encoder::with_limits(Limits {
+            max_string_length: 4,
+            ..Limits::default()
+        });
+        let err = enc
+            .encode_value(&Value::Bytes(vec![0u8; 100]))
+            .unwrap_err();
+        assert!(matches!(err, SurpError::StringTooLong(_, 4)));
+    }
+
+    #[test]
+    fn encode_object_key_exceeding_max_string_length_errors_cleanly() {
+        let mut enc = Encoder::with_limits(Limits {
+            max_string_length: 4,
+            ..Limits::default()
+        });
+        let obj = Value::Object(vec![("a_very_long_key_name".into(), Value::UInt(1))]);
+        let err = enc.encode_value(&obj).unwrap_err();
+        assert!(matches!(err, SurpError::StringTooLong(_, 4)));
     }
 
     #[cfg(feature = "lz4")]

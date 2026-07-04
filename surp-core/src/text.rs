@@ -510,18 +510,7 @@ fn write_value(out: &mut String, value: &Value, indent_size: usize, depth: usize
             }
         }
         Value::Str(s) => {
-            out.push('"');
-            for ch in s.chars() {
-                match ch {
-                    '"' => out.push_str("\\\""),
-                    '\\' => out.push_str("\\\\"),
-                    '\n' => out.push_str("\\n"),
-                    '\r' => out.push_str("\\r"),
-                    '\t' => out.push_str("\\t"),
-                    c => out.push(c),
-                }
-            }
-            out.push('"');
+            write_escaped_string(out, s);
         }
         Value::Bytes(b) => {
             out.push_str("b64#");
@@ -564,9 +553,7 @@ fn write_value(out: &mut String, value: &Value, indent_size: usize, depth: usize
                     if is_valid_identifier(key) {
                         out.push_str(key);
                     } else {
-                        out.push('"');
-                        out.push_str(key);
-                        out.push('"');
+                        write_escaped_string(out, key);
                     }
                     out.push_str(": ");
                     write_value(out, val, indent_size, depth + 1);
@@ -577,6 +564,29 @@ fn write_value(out: &mut String, value: &Value, indent_size: usize, depth: usize
             }
         }
     }
+}
+
+/// Write a double-quoted, escaped string literal to `out`.
+///
+/// Shared by the `Value::Str` pretty-printer branch and the object-key
+/// printer, so that any string used as either a value or a key gets the
+/// same escaping for `"`, `\`, and control characters. Without this, a key
+/// containing e.g. `"` would be emitted verbatim and produce syntactically
+/// broken (or worse, silently misparsed) text output, breaking the
+/// documented 1:1 text-value round trip.
+fn write_escaped_string(out: &mut String, s: &str) {
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
 }
 
 /// Check if an array contains only simple scalar values (no nesting).
@@ -772,6 +782,20 @@ mod tests {
         // by the enclosing object/array syntax.
         let parsed = parse(&text).unwrap();
         assert_eq!(parsed, v);
+    }
+
+    #[test]
+    fn pretty_print_escapes_object_keys() {
+        // A key containing '"', '\\', and '\n' must be escaped identically
+        // to how Value::Str is escaped, so the pretty-printed text remains
+        // syntactically valid and re-parses to the exact same Value.
+        let original = Value::Object(vec![(
+            "weird\"key\\with\nnewline".into(),
+            Value::UInt(1),
+        )]);
+        let text = pretty_print(&original, 2);
+        let parsed = parse(&text).unwrap();
+        assert_eq!(parsed, original);
     }
 
     #[test]

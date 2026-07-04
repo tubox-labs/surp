@@ -31,7 +31,6 @@ thiserror = { workspace = true }
 xxhash-rust = { workspace = true }
 base64 = { workspace = true }
 serde_json = { workspace = true }
-bytes = { workspace = true }
 crc32fast = { workspace = true, optional = true }
 bumpalo = { workspace = true, optional = true }
 
