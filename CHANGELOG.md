@@ -15,6 +15,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [1.2.0] - 2026-07-04
+
+This release documents the current workspace architecture and records the
+highest-priority defect inventory across the Rust, Python, CLI, FFI, and MCP
+surfaces.
+
+### Added
+
+- Added a 1.2.0 release note entry for the current repository state.
+- Added an architecture snapshot covering the workspace split, the two parallel
+  v1/RFC-001 pipelines, and the Python data flow through PyO3.
+
+### Changed
+
+- Clarified that `surp-core` is the shared engine crate, `surp-derive` handles
+  proc-macros, `surp-io` handles streaming/mmap helpers, `surp-ffi` exposes
+  the C ABI, and `surp-python` combines the native extension with the pure
+  Python `surp.model` layer.
+- Clarified that `surp-mcp` is a separate stdio JSON-RPC server outside the
+  workspace, while `surp_docs`, `bench`, `fuzz`, and `examples` remain
+  supporting tooling.
+
+### Known Issues
+
+- Critical: untrusted CTN `<binary: N bytes>` lengths can allocate without a
+  cap, Python subclass handling can surface raw PyO3 exceptions, deep Python
+  recursion can overflow the native stack, and Python wheel compression feature
+  wiring is incomplete.
+- High: RFC-001 CBF container decoders can preallocate from untrusted counts,
+  decode recursion can overflow on many consecutive blocks, CTN parsing has no
+  nesting limit, `surp-io` can allocate from stream-controlled block lengths,
+  MCP tool hinting is inaccurate for file-writing operations, MCP JSON-RPC
+  input is unbounded, inline MCP value tools bypass input-size checks,
+  `derive(Surp)` / `derive(SurpSchema)` attribute hygiene needs compile-time
+  diagnostics, SIMD varint pre-scan provides no release-mode benefit, and FFI
+  panics can cross the ABI boundary.
+- Medium/Low: owned decode tracking, text escaping, encoder limit parity,
+  `BumpDecoder` arena behavior, CRC64 implementation strategy, double-buffering
+  in CBF sequences/maps, integer panics in infallible paths, duplicate block
+  framing, Python exception classification, missing Python RFC-001 bindings,
+  lack of GIL release, and `surp-compression` / `surp-core` duplication remain
+  open design and correctness work.
+
+### Validation
+
+- `cargo test -p surp-derive --test derive_types --test trybuild`
+- `cargo test -p surp-cli --test cli_integration --test cli_rfc001`
+
+
 ## [1.0.2] - 2026-05-18
 
 This patch release fixes Python 3.14 model annotation handling, improves model
