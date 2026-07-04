@@ -19,7 +19,45 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, Lit, parse_macro_input};
+use syn::{Attribute, Data, DeriveInput, Fields, Lit, parse_macro_input};
+
+/// Resolve the numeric `#[surp(id = N)]` for a field, falling back to a
+/// deterministic hash of the field name when no explicit id is given.
+///
+/// This is shared by `derive_surp` and `derive_surp_schema` so that the id a
+/// struct's wire encoding actually uses (folded into `schema_fingerprint`,
+/// and now used directly as the wire object key) always agrees with the id
+/// reported by `schema_info()`. Prior to this helper the two macros computed
+/// fallback ids differently (`derive_surp` hashed the field name,
+/// `derive_surp_schema` always reported `0`), which made `schema_info()`
+/// lie about the id actually on the wire whenever an explicit id was
+/// omitted.
+fn resolve_field_id(attrs: &[Attribute], field_name: &str) -> u64 {
+    let mut field_id: Option<u64> = None;
+
+    for attr in attrs {
+        if attr.path().is_ident("surp") {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("id") {
+                    let value = meta.value()?;
+                    let lit: Lit = value.parse()?;
+                    if let Lit::Int(lit_int) = lit {
+                        field_id = Some(lit_int.base10_parse().unwrap());
+                    }
+                }
+                Ok(())
+            })
+            .ok();
+        }
+    }
+
+    field_id.unwrap_or_else(|| {
+        // If no explicit id, use hash of field name as fallback.
+        // This is not recommended but provides a default.
+        let hash = xxhash_rust::xxh64::xxh64(field_name.as_bytes(), 0);
+        hash & 0xFFFF // Use lower 16 bits.
+    })
+}
 
 /// Derive the `Surp` trait for a struct, generating encode/decode
 /// implementations with stable field IDs.
@@ -45,30 +83,7 @@ pub fn derive_surp(input: TokenStream) -> TokenStream {
     for field in fields {
         let field_name = field.ident.as_ref().unwrap();
         let field_name_str = field_name.to_string();
-        let mut field_id: Option<u64> = None;
-
-        for attr in &field.attrs {
-            if attr.path().is_ident("surp") {
-                attr.parse_nested_meta(|meta| {
-                    if meta.path.is_ident("id") {
-                        let value = meta.value()?;
-                        let lit: Lit = value.parse()?;
-                        if let Lit::Int(lit_int) = lit {
-                            field_id = Some(lit_int.base10_parse().unwrap());
-                        }
-                    }
-                    Ok(())
-                })
-                .ok();
-            }
-        }
-
-        let id = field_id.unwrap_or_else(|| {
-            // If no explicit id, use hash of field name as fallback.
-            // This is not recommended but provides a default.
-            let hash = xxhash_rust::xxh64::xxh64(field_name_str.as_bytes(), 0);
-            hash & 0xFFFF // Use lower 16 bits.
-        });
+        let id = resolve_field_id(&field.attrs, &field_name_str);
 
         field_infos.push((field_name.clone(), field_name_str, id));
     }
@@ -85,20 +100,26 @@ pub fn derive_surp(input: TokenStream) -> TokenStream {
     );
     let fingerprint = xxhash_rust::xxh64::xxh64(schema_str.as_bytes(), 0);
 
-    // Generate to_surp_value: creates an Object with field name keys.
+    // Generate to_surp_value: creates an Object keyed by the stringified
+    // numeric field id (not the field name). This is what actually makes
+    // `#[surp(id = N)]` "stable": renaming a Rust field while keeping the
+    // same id produces byte-identical wire output, and the wire no longer
+    // repeats full field-name strings for every encoded value.
     let encode_fields: Vec<_> = field_infos
         .iter()
-        .map(|(fname, fname_str, _id)| {
+        .map(|(fname, _fname_str, id)| {
+            let id_str = id.to_string();
             quote! {
                 (
-                    #fname_str.to_string(),
+                    #id_str.to_string(),
                     surp_core::Surp::to_surp_value(&self.#fname)
                 )
             }
         })
         .collect();
 
-    // Generate from_surp_value: matches field names from Object entries.
+    // Generate from_surp_value: matches field ids (as strings) from Object
+    // entries, since the wire key is now the stringified id.
     let decode_fields_init: Vec<_> = field_infos
         .iter()
         .map(|(fname, _fname_str, _id)| {
@@ -110,9 +131,10 @@ pub fn derive_surp(input: TokenStream) -> TokenStream {
 
     let decode_fields_match: Vec<_> = field_infos
         .iter()
-        .map(|(fname, fname_str, _id)| {
+        .map(|(fname, _fname_str, id)| {
+            let id_str = id.to_string();
             quote! {
-                #fname_str => {
+                #id_str => {
                     #fname = Some(surp_core::Surp::from_surp_value(v)?);
                 }
             }
@@ -194,23 +216,7 @@ pub fn derive_surp_schema(input: TokenStream) -> TokenStream {
     let mut field_entries = Vec::new();
     for field in fields {
         let fname = field.ident.as_ref().unwrap().to_string();
-        let mut fid: u64 = 0;
-
-        for attr in &field.attrs {
-            if attr.path().is_ident("surp") {
-                attr.parse_nested_meta(|meta| {
-                    if meta.path.is_ident("id") {
-                        let value = meta.value()?;
-                        let lit: Lit = value.parse()?;
-                        if let Lit::Int(lit_int) = lit {
-                            fid = lit_int.base10_parse().unwrap();
-                        }
-                    }
-                    Ok(())
-                })
-                .ok();
-            }
-        }
+        let fid = resolve_field_id(&field.attrs, &fname);
 
         field_entries.push(quote! {
             (#fname, #fid)

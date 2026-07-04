@@ -176,12 +176,14 @@ fn with_surp_bytes_roundtrip() {
 
     let val = v.to_surp_value();
 
-    // SurpBytes → Bytes, Vec<u8> → Array
+    // SurpBytes → Bytes, Vec<u8> → Array.
+    // Wire object keys are the stringified numeric `#[surp(id = N)]`, not
+    // the field name (raw = id 2, byte_array = id 3 in `WithBytes`).
     if let Value::Object(entries) = &val {
-        let raw_val = entries.iter().find(|(k, _)| k == "raw").unwrap();
+        let raw_val = entries.iter().find(|(k, _)| k == "2").unwrap();
         assert!(matches!(raw_val.1, Value::Bytes(_)));
 
-        let arr_val = entries.iter().find(|(k, _)| k == "byte_array").unwrap();
+        let arr_val = entries.iter().find(|(k, _)| k == "3").unwrap();
         assert!(matches!(arr_val.1, Value::Array(_)));
     } else {
         panic!("expected Object");
@@ -265,4 +267,125 @@ fn fingerprint_is_stable() {
     // Different structs should have different fingerprints.
     let fp3 = AllIntegers::schema_fingerprint();
     assert_ne!(fp1, fp3);
+}
+
+// ─── Regression: field ids drive wire encoding, not field names ─────────────
+//
+// `RenameOld`/`RenameNew` model the same logical schema (same ids, same
+// types, in the same order) before and after a field rename. Because
+// `to_surp_value`/`from_surp_value` now key the `Value::Object` entries by
+// the stringified `#[surp(id = N)]` instead of the Rust field name, renaming
+// a field while keeping its id must produce byte-identical wire output. This
+// is the "stable field IDs" guarantee the crate's docs advertise.
+
+#[derive(Debug, PartialEq, Surp)]
+struct RenameOld {
+    #[surp(id = 1)]
+    first_name: String,
+    #[surp(id = 2)]
+    age: u8,
+}
+
+#[derive(Debug, PartialEq, Surp)]
+struct RenameNew {
+    #[surp(id = 1)]
+    full_name: String, // renamed from `first_name`, same id
+    #[surp(id = 2)]
+    age: u8,
+}
+
+#[test]
+fn renaming_field_keeps_same_id_produces_identical_wire_bytes() {
+    let old = RenameOld {
+        first_name: "Alice".into(),
+        age: 30,
+    };
+    let new = RenameNew {
+        full_name: "Alice".into(),
+        age: 30,
+    };
+
+    // Same Value representation: object keys are ids ("1", "2"), not names.
+    assert_eq!(old.to_surp_value(), new.to_surp_value());
+
+    // Same encoded bytes end-to-end.
+    let old_bytes = old.to_surp_bytes().unwrap();
+    let new_bytes = new.to_surp_bytes().unwrap();
+    assert_eq!(old_bytes, new_bytes);
+
+    // And the renamed struct can decode bytes produced by the old struct.
+    let decoded = RenameNew::from_surp_bytes(&old_bytes).unwrap();
+    assert_eq!(decoded, new);
+}
+
+// ─── Regression: fallback id agreement between Surp and SurpSchema ──────────
+//
+// When a field omits `#[surp(id = N)]`, `derive_surp` and `derive_surp_schema`
+// must resolve the *same* fallback id (an xxh64 hash of the field name),
+// since both are folded into `schema_fingerprint()` and `schema_info()`
+// respectively. Before the shared `resolve_field_id` helper,
+// `derive_surp_schema` always reported a fallback id of `0`, which
+// disagreed with the hash-derived id `derive_surp` actually used on the
+// wire and in the fingerprint.
+
+#[derive(Debug, PartialEq, Surp, SurpSchema)]
+struct WithImplicitId {
+    #[surp(id = 1)]
+    explicit: u32,
+    // No `#[surp(id = ..)]`: both macros must fall back to the same
+    // xxh64-derived id for `implicit_field`.
+    implicit_field: u32,
+}
+
+// A second struct whose only difference from `WithImplicitId` is that the
+// implicit field has an explicit id equal to 0 (the value the buggy
+// `derive_surp_schema` fallback always reported). If the fallback ids ever
+// disagree again, this struct's fingerprint would accidentally match
+// `WithImplicitId`'s even though the wire ids differ.
+#[derive(Debug, PartialEq, Surp, SurpSchema)]
+struct WithExplicitZeroId {
+    #[surp(id = 1)]
+    explicit: u32,
+    #[surp(id = 0)]
+    implicit_field: u32,
+}
+
+#[test]
+fn schema_info_id_matches_fingerprint_input_id_for_implicit_fields() {
+    let info = WithImplicitId::schema_info();
+    let reported_id = info
+        .iter()
+        .find(|(name, _)| *name == "implicit_field")
+        .map(|(_, id)| *id)
+        .expect("implicit_field present in schema_info");
+
+    // The id `derive_surp` actually folds into the fingerprint for an
+    // implicit field is the same xxh64-of-name fallback used here.
+    let expected_id =
+        xxhash_rust::xxh64::xxh64("implicit_field".as_bytes(), 0) & 0xFFFF;
+    assert_eq!(reported_id, expected_id);
+
+    // Cross-check against the actual bug scenario: if `schema_info()` still
+    // (incorrectly) reported 0 for the implicit field, it would equal the
+    // explicit-id-0 struct's reported id even though the two structs use
+    // different wire ids and therefore must have different fingerprints.
+    assert_ne!(reported_id, 0);
+    assert_ne!(
+        WithImplicitId::schema_fingerprint(),
+        WithExplicitZeroId::schema_fingerprint()
+    );
+
+    // And the wire bytes for the implicit-id struct must actually use the
+    // resolved hash id as the object key (not "0" and not the field name).
+    let v = WithImplicitId {
+        explicit: 1,
+        implicit_field: 2,
+    };
+    if let Value::Object(entries) = v.to_surp_value() {
+        let key = format!("{expected_id}");
+        assert!(entries.iter().any(|(k, _)| *k == key));
+        assert!(!entries.iter().any(|(k, _)| k == "implicit_field"));
+    } else {
+        panic!("expected Object");
+    }
 }
