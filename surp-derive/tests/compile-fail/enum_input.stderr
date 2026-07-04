@@ -1,0 +1,5 @@
+error: Surp derive only supports structs
+ --> tests/compile-fail/enum_input.rs:6:6
+  |
+6 | enum NotAStruct {
+  |      ^^^^^^^^^^

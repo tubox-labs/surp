@@ -1,0 +1,5 @@
+error: expected `=`
+ --> tests/compile-fail/attr_missing_value.rs:7:14
+  |
+7 |     #[surp(id)]
+  |              ^

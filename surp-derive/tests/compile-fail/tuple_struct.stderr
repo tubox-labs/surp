@@ -1,0 +1,5 @@
+error: Surp derive only supports structs with named fields
+ --> tests/compile-fail/tuple_struct.rs:6:8
+  |
+6 | struct TupleStruct(#[surp(id = 1)] String);
+  |        ^^^^^^^^^^^

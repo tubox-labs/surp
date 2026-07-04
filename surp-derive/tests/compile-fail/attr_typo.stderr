@@ -1,0 +1,5 @@
+error: unknown key in `#[surp(...)]` attribute; expected `id = N`
+ --> tests/compile-fail/attr_typo.rs:7:12
+  |
+7 |     #[surp(idd = 1)]
+  |            ^^^

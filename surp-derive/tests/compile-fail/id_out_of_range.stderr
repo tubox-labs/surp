@@ -1,0 +1,5 @@
+error: invalid Surp field id `99999999999999999999`: number too large to fit in target type
+ --> tests/compile-fail/id_out_of_range.rs:8:17
+  |
+8 |     #[surp(id = 99999999999999999999)]
+  |                 ^^^^^^^^^^^^^^^^^^^^

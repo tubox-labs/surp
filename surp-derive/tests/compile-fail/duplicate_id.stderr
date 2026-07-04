@@ -1,0 +1,5 @@
+error: duplicate Surp field id 1 (also used by field `first`)
+  --> tests/compile-fail/duplicate_id.rs:10:5
+   |
+10 |     second: String,
+   |     ^^^^^^
