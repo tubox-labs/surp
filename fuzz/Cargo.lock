@@ -42,27 +42,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
-name = "surp-core"
-version = "0.1.0"
-dependencies = [
- "base64",
- "bytes",
- "serde_json",
- "thiserror",
- "xxhash-rust",
-]
-
-[[package]]
-name = "surp-fuzz"
-version = "0.0.0"
-dependencies = [
- "arbitrary",
- "surp-core",
- "libfuzzer-sys",
- "xxhash-rust",
-]
-
-[[package]]
 name = "derive_arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -200,6 +179,27 @@ name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
+
+[[package]]
+name = "surp-core"
+version = "1.0.2"
+dependencies = [
+ "base64",
+ "bytes",
+ "serde_json",
+ "thiserror",
+ "xxhash-rust",
+]
+
+[[package]]
+name = "surp-fuzz"
+version = "0.0.0"
+dependencies = [
+ "arbitrary",
+ "libfuzzer-sys",
+ "surp-core",
+ "xxhash-rust",
+]
 
 [[package]]
 name = "syn"
