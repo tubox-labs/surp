@@ -21,3 +21,11 @@ simd-varint = []
 
 [dependencies]
 surp-core = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "varint_bench"
+harness = false
+required-features = ["simd-varint"]

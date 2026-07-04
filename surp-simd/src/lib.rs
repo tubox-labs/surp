@@ -4,7 +4,9 @@
 //!
 //! This crate provides optimized implementations of performance-critical
 //! operations. On aarch64 (Apple Silicon, etc.) it uses NEON intrinsics.
-//! On x86_64 it uses SSE2/AVX2 when available.
+//! Currently there is no x86_64 SIMD implementation (no SSE2/AVX2 support
+//! yet); x86_64 and all other non-aarch64 architectures use the scalar
+//! fallback path.
 //! All functions have scalar fallbacks for unsupported platforms.
 //!
 //! # Feature flags
@@ -120,6 +122,24 @@ mod simd_varint_neon {
     }
 }
 
+/// Decode the *value* of a varint whose length is already known (e.g. from
+/// the NEON pre-scan), without re-scanning for the continuation-bit
+/// terminator the way `surp_core::varint::decode_varint` does.
+///
+/// Caller must guarantee `len` is the correct number of bytes for the
+/// varint starting at `offset` (1..=10) and that `offset + len <= data.len()`.
+#[cfg(all(feature = "simd-varint", target_arch = "aarch64"))]
+#[inline]
+fn decode_varint_value_known_len(data: &[u8], offset: usize, len: usize) -> u64 {
+    let mut result: u64 = 0;
+    let mut shift: u32 = 0;
+    for &byte in &data[offset..offset + len] {
+        result |= ((byte & 0x7F) as u64) << shift;
+        shift += 7;
+    }
+    result
+}
+
 /// Batch-decode varints using SIMD pre-scan to determine boundaries first.
 ///
 /// This amortizes branch misprediction by scanning continuation bits in bulk.
@@ -136,22 +156,41 @@ pub fn batch_decode_varints_simd(data: &[u8], count: usize) -> Vec<(u64, usize)>
             if offset >= data.len() {
                 break;
             }
-            // Use SIMD to find varint length, then decode scalar
+            // Use SIMD to find varint length, then decode directly from the
+            // known-length slice (no redundant scalar re-scan).
             let vlen = unsafe { simd_varint_neon::varint_len_neon(data, offset) };
+            // A NEON-reported length of exactly 10 still needs the same
+            // overflow check `decode_varint` performs (only bit 0 of the
+            // 10th byte may be set, since u64 tops out at bit 64). Anything
+            // else takes the fast path below.
+            let overflow_10th_byte = vlen == Some(10) && data[offset + 9] > 0x01;
             match vlen {
-                Some(len) => {
-                    // Fast scalar decode knowing the exact length
+                Some(len) if !overflow_10th_byte => {
+                    // `len` is authoritative: the NEON pre-scan already found the
+                    // terminator byte, so we can accumulate the value directly from
+                    // the known-length slice without re-scanning for continuation
+                    // bits (that's what `decode_varint` would otherwise redo).
+                    let val = decode_varint_value_known_len(data, offset, len);
+                    #[cfg(debug_assertions)]
                     match surp_core::varint::decode_varint(data, offset) {
-                        Ok((val, consumed)) => {
-                            debug_assert_eq!(consumed, len);
-                            results.push((val, consumed));
-                            offset += consumed;
+                        Ok((scalar_val, scalar_len)) => {
+                            debug_assert_eq!(
+                                (val, len),
+                                (scalar_val, scalar_len),
+                                "NEON-derived length disagreed with scalar decode"
+                            );
                         }
-                        Err(_) => break,
+                        Err(e) => {
+                            panic!("NEON pre-scan reported a decodable varint but the scalar decoder failed: {e:?}");
+                        }
                     }
+                    results.push((val, len));
+                    offset += len;
                 }
-                None => {
-                    // Fallback to scalar
+                _ => {
+                    // Either NEON found no terminator within its scan window, or
+                    // the 10-byte overflow case above applies. Fall back to the
+                    // scalar decoder, which performs full validation.
                     match surp_core::varint::decode_varint(data, offset) {
                         Ok((val, consumed)) => {
                             results.push((val, consumed));
@@ -374,6 +413,67 @@ mod tests {
             assert_eq!(s.0, d.0, "value mismatch");
             assert_eq!(s.1, d.1, "consumed mismatch");
         }
+    }
+
+    /// Broader correctness sweep: single-byte, multi-byte, and max-length
+    /// (10-byte) varints, including a long run that crosses the 16-byte
+    /// NEON chunk boundary multiple times, must decode identically via
+    /// both the scalar and SIMD batch paths.
+    #[test]
+    fn batch_decode_simd_matches_scalar_wide_sweep() {
+        let mut values: Vec<u64> = vec![
+            0,
+            1,
+            63,
+            64,
+            127,   // largest single-byte
+            128,   // smallest two-byte
+            255,
+            300,
+            16383,
+            16384, // smallest three-byte
+            1 << 20,
+            1 << 27,
+            1 << 34,
+            1 << 41,
+            1 << 48,
+            1 << 55,
+            1 << 62,
+            u64::MAX - 1,
+            u64::MAX, // largest, 10-byte varint
+        ];
+        // Repeat the pattern to comfortably span several 16-byte NEON chunks.
+        values.extend(values.clone());
+        values.extend(values.clone());
+
+        let mut data = Vec::new();
+        for v in &values {
+            surp_core::varint::encode_varint_vec(*v, &mut data);
+        }
+
+        let scalar = batch_decode_varints(&data, values.len());
+        let simd = batch_decode_varints_simd(&data, values.len());
+        assert_eq!(scalar.len(), values.len());
+        assert_eq!(scalar.len(), simd.len());
+        for (i, (s, d)) in scalar.iter().zip(simd.iter()).enumerate() {
+            assert_eq!(s.0, d.0, "value mismatch at index {i}");
+            assert_eq!(s.1, d.1, "consumed mismatch at index {i}");
+        }
+    }
+
+    /// A malformed 10-byte varint whose final byte exceeds 0x01 overflows
+    /// u64 and must be rejected identically by both decode paths (rather
+    /// than the SIMD path silently accepting a truncated/garbage value).
+    #[test]
+    fn batch_decode_simd_rejects_overflow_like_scalar() {
+        let mut data = vec![0xFFu8; 9];
+        data.push(0x02); // invalid 10th byte (only bit 0 may be set)
+        data.extend_from_slice(&[0x00, 0x01, 0x02]); // trailing valid varints, never reached
+
+        let scalar = batch_decode_varints(&data, 3);
+        let simd = batch_decode_varints_simd(&data, 3);
+        assert_eq!(scalar.len(), 0, "scalar path should stop at the overflow varint");
+        assert_eq!(simd.len(), scalar.len(), "simd path must reject overflow identically");
     }
 
     #[test]
