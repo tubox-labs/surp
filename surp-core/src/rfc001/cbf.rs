@@ -56,6 +56,15 @@ const PRIM_F64: u8 = 0xD;
 const SEQ_HAS_OFFSET_TABLE: u8 = 0b1000;
 const MAP_HAS_OFFSET_TABLE: u8 = 0b1000;
 
+/// Upper bound for eagerly pre-allocating a `Vec` based on an
+/// attacker-controlled item/field count read from a segment payload before
+/// that count has been validated against the remaining payload bytes.
+/// Real counts larger than this still decode correctly; the `Vec` simply
+/// grows naturally (via push) as items are actually parsed and consumed
+/// from the payload, so a crafted huge count can no longer force an
+/// oversized upfront allocation.
+const MAX_PREALLOC_ITEMS: usize = 1024;
+
 /// CBF file header (32 bytes).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CbfHeader {
@@ -890,7 +899,7 @@ fn decode_product(payload: &[u8], symbols: &[String], depth: usize) -> Result<Va
     let field_count =
         usize::try_from(field_count).map_err(|_| SurpError::LengthOverflow(field_count))?;
 
-    let mut fields = Vec::with_capacity(field_count);
+    let mut fields = Vec::with_capacity(field_count.min(MAX_PREALLOC_ITEMS));
     for _ in 0..field_count {
         let (name_segment, consumed_name) = decode_segment(payload, pos, symbols, depth)?;
         pos += consumed_name;
@@ -944,7 +953,7 @@ fn decode_sum(payload: &[u8], symbols: &[String], depth: usize) -> Result<Value>
             let (count, consumed) = decode_varint(payload, pos)?;
             pos += consumed;
             let count = usize::try_from(count).map_err(|_| SurpError::LengthOverflow(count))?;
-            let mut items = Vec::with_capacity(count);
+            let mut items = Vec::with_capacity(count.min(MAX_PREALLOC_ITEMS));
             for _ in 0..count {
                 let (item, consumed_item) = decode_segment(payload, pos, symbols, depth)?;
                 pos += consumed_item;
@@ -956,7 +965,7 @@ fn decode_sum(payload: &[u8], symbols: &[String], depth: usize) -> Result<Value>
             let (count, consumed) = decode_varint(payload, pos)?;
             pos += consumed;
             let count = usize::try_from(count).map_err(|_| SurpError::LengthOverflow(count))?;
-            let mut fields = Vec::with_capacity(count);
+            let mut fields = Vec::with_capacity(count.min(MAX_PREALLOC_ITEMS));
             for _ in 0..count {
                 let (name_seg, consumed_name) = decode_segment(payload, pos, symbols, depth)?;
                 pos += consumed_name;
@@ -1011,7 +1020,7 @@ fn decode_sequence(payload: &[u8], symbols: &[String], depth: usize, cfg: u8) ->
 
     let has_offsets = cfg & SEQ_HAS_OFFSET_TABLE != 0;
 
-    let mut items = Vec::with_capacity(count);
+    let mut items = Vec::with_capacity(count.min(MAX_PREALLOC_ITEMS));
     if has_offsets {
         let table_start = pos;
         let table_len = count
@@ -1064,7 +1073,7 @@ fn decode_map(payload: &[u8], symbols: &[String], depth: usize, cfg: u8) -> Resu
 
     let has_offsets = cfg & MAP_HAS_OFFSET_TABLE != 0;
 
-    let mut pairs = Vec::with_capacity(count);
+    let mut pairs = Vec::with_capacity(count.min(MAX_PREALLOC_ITEMS));
     if has_offsets {
         let table_start = pos;
         let table_len = count
@@ -1456,7 +1465,7 @@ fn decode_symbol_table(payload: &[u8], offset: usize) -> Result<Vec<String>> {
     ) as usize;
 
     let mut pos = offset + 4;
-    let mut symbols = Vec::with_capacity(count);
+    let mut symbols = Vec::with_capacity(count.min(MAX_PREALLOC_ITEMS));
     for _ in 0..count {
         let (len, consumed) = decode_varint(payload, pos)?;
         pos += consumed;
@@ -1796,5 +1805,60 @@ mod tests {
         let decoded = decode_document(&encoded).unwrap();
         let root = decoded.document.effective_root().unwrap();
         assert!(matches!(root, Value::Product(_)));
+    }
+
+    /// A crafted struct payload declares an enormous field count via its
+    /// leading varint but provides no actual field bytes. Before the fix,
+    /// `Vec::with_capacity(field_count)` would attempt to eagerly allocate
+    /// space for that (attacker-controlled) count. The capped allocation
+    /// must instead fail fast with a clean decode error once it tries to
+    /// read the (nonexistent) first field.
+    #[test]
+    fn decode_product_rejects_huge_field_count_with_little_payload() {
+        let mut payload = Vec::new();
+        payload.push(0); // has_type = 0 (no type name)
+        encode_varint_vec(u64::MAX, &mut payload); // huge, attacker-controlled field count
+        // No further bytes: the first field's name segment cannot be read.
+
+        let err = decode_product(&payload, &[], 0).unwrap_err();
+        assert!(
+            matches!(err, SurpError::UnexpectedEof(_)),
+            "expected UnexpectedEof, got {err:?}"
+        );
+    }
+
+    /// Same shape of attack as above, but against `decode_sequence`'s
+    /// non-offset-table path: a huge item count with no backing payload
+    /// must be rejected cleanly instead of driving an oversized upfront
+    /// allocation.
+    #[test]
+    fn decode_sequence_rejects_huge_count_with_little_payload() {
+        let mut payload = Vec::new();
+        payload.push(0); // has_type = 0 (no element type)
+        encode_varint_vec(u64::MAX, &mut payload); // huge, attacker-controlled item count
+        // cfg = 0 selects the non-offset-table decode path.
+
+        let err = decode_sequence(&payload, &[], 0, 0).unwrap_err();
+        assert!(
+            matches!(err, SurpError::UnexpectedEof(_)),
+            "expected UnexpectedEof, got {err:?}"
+        );
+    }
+
+    /// The symbol table decoder reads its entry count directly from a
+    /// 4-byte little-endian integer and previously pre-allocated a `Vec`
+    /// for that many entries with no bound. A huge declared count with no
+    /// backing bytes must fail cleanly.
+    #[test]
+    fn decode_symbol_table_rejects_huge_count_with_little_payload() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&u32::MAX.to_le_bytes()); // huge entry count
+        // No further bytes: the first entry's length varint cannot be read.
+
+        let err = decode_symbol_table(&payload, 0).unwrap_err();
+        assert!(
+            matches!(err, SurpError::UnexpectedEof(_)),
+            "expected UnexpectedEof, got {err:?}"
+        );
     }
 }

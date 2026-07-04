@@ -536,46 +536,51 @@ impl<'a> Decoder<'a> {
     /// borrowed `SurpValue<'a>` cannot reference decompressed (owned) data.
     /// Use `decode_all_owned()` or `decode_next_owned()` for compressed data.
     pub fn decode_next(&mut self) -> Result<SurpValue<'a>> {
-        // If we don't have a current block, read one.
-        if self.current_block.is_none() {
-            match self.read_next_block()? {
-                Some((BlockType::Data, start, end)) => {
-                    // Compressed blocks land in decompressed_buf with indices 0..len.
-                    // Zero-copy SurpValue cannot borrow from owned decompressed data.
-                    if self.decompressed_buf.is_some() {
-                        return Err(SurpError::DecompressionError(
-                            "zero-copy decode_next() cannot borrow from decompressed block; \
-                             use decode_all_owned() or decode_next_owned() instead"
-                                .into(),
-                        ));
+        // Loop instead of self-recursion: skipping non-Data blocks or
+        // exhausted blocks must not grow the native call stack, since a
+        // crafted input can contain thousands of tiny skippable blocks.
+        loop {
+            // If we don't have a current block, read one.
+            if self.current_block.is_none() {
+                match self.read_next_block()? {
+                    Some((BlockType::Data, start, end)) => {
+                        // Compressed blocks land in decompressed_buf with indices 0..len.
+                        // Zero-copy SurpValue cannot borrow from owned decompressed data.
+                        if self.decompressed_buf.is_some() {
+                            return Err(SurpError::DecompressionError(
+                                "zero-copy decode_next() cannot borrow from decompressed block; \
+                                 use decode_all_owned() or decode_next_owned() instead"
+                                    .into(),
+                            ));
+                        }
+                        self.current_block = Some((start, end));
+                        self.block_pos = start;
+                        // Reset per-block tables (StringDict preload is not
+                        // supported in zero-copy path — it produces owned data).
+                        self.str_slices.clear();
+                        self.dict_preloaded = false;
                     }
-                    self.current_block = Some((start, end));
-                    self.block_pos = start;
-                    // Reset per-block tables (StringDict preload is not
-                    // supported in zero-copy path — it produces owned data).
-                    self.str_slices.clear();
-                    self.dict_preloaded = false;
-                }
-                Some(_) => {
-                    // Skip non-data blocks, try again.
-                    return self.decode_next();
-                }
-                None => {
-                    return Err(SurpError::UnexpectedEof(self.pos));
+                    Some(_) => {
+                        // Skip non-data blocks, try again.
+                        continue;
+                    }
+                    None => {
+                        return Err(SurpError::UnexpectedEof(self.pos));
+                    }
                 }
             }
+
+            let (block_start, block_end) = self.current_block.unwrap();
+            let _ = block_start;
+
+            if self.block_pos >= block_end {
+                // Current block exhausted, try next.
+                self.current_block = None;
+                continue;
+            }
+
+            return self.decode_value_at(block_end);
         }
-
-        let (block_start, block_end) = self.current_block.unwrap();
-        let _ = block_start;
-
-        if self.block_pos >= block_end {
-            // Current block exhausted, try next.
-            self.current_block = None;
-            return self.decode_next();
-        }
-
-        self.decode_value_at(block_end)
     }
 
     /// Decode the next value as an owned `Value`.
@@ -583,37 +588,40 @@ impl<'a> Decoder<'a> {
     /// Unlike `decode_next()`, this works transparently with both compressed
     /// and uncompressed blocks.
     pub fn decode_next_owned(&mut self) -> Result<Value> {
-        // If we don't have a current block, read one.
-        if self.current_block.is_none() {
-            match self.read_next_block()? {
-                Some((BlockType::Data, start, end)) => {
-                    self.current_block = Some((start, end));
-                    self.block_pos = start;
-                    self.str_slices.clear();
-                    // Only clear owned_strings if no StringDict block pre-populated it.
-                    if !self.dict_preloaded {
-                        self.owned_strings.clear();
+        // Loop instead of self-recursion: see decode_next() for rationale.
+        loop {
+            // If we don't have a current block, read one.
+            if self.current_block.is_none() {
+                match self.read_next_block()? {
+                    Some((BlockType::Data, start, end)) => {
+                        self.current_block = Some((start, end));
+                        self.block_pos = start;
+                        self.str_slices.clear();
+                        // Only clear owned_strings if no StringDict block pre-populated it.
+                        if !self.dict_preloaded {
+                            self.owned_strings.clear();
+                        }
+                        // Reset the flag — it was consumed for this block.
+                        self.dict_preloaded = false;
                     }
-                    // Reset the flag — it was consumed for this block.
-                    self.dict_preloaded = false;
-                }
-                Some(_) => {
-                    return self.decode_next_owned();
-                }
-                None => {
-                    return Err(SurpError::UnexpectedEof(self.pos));
+                    Some(_) => {
+                        continue;
+                    }
+                    None => {
+                        return Err(SurpError::UnexpectedEof(self.pos));
+                    }
                 }
             }
+
+            let (_block_start, block_end) = self.current_block.unwrap();
+
+            if self.block_pos >= block_end {
+                self.current_block = None;
+                continue;
+            }
+
+            return self.decode_value_owned_at(block_end);
         }
-
-        let (_block_start, block_end) = self.current_block.unwrap();
-
-        if self.block_pos >= block_end {
-            self.current_block = None;
-            return self.decode_next_owned();
-        }
-
-        self.decode_value_owned_at(block_end)
     }
 
     /// Decode a value at `self.block_pos` into an owned `Value`.
@@ -1627,5 +1635,33 @@ mod tests {
         let decoded = dec.decode_all_owned().unwrap();
         assert_eq!(decoded.len(), 1);
         assert_eq!(decoded[0], shared_prefix_val);
+    }
+
+    /// `decode_next`/`decode_next_owned` used to skip non-Data blocks (and
+    /// exhausted blocks) via self-recursion, so a crafted input with many
+    /// tiny consecutive skippable blocks could blow the native call stack.
+    /// This test builds thousands of minimal empty `Index` blocks followed
+    /// by a single `Data` block, and asserts decoding completes without
+    /// crashing (the loop-based rewrite should skip them iteratively).
+    #[test]
+    fn skips_many_consecutive_non_data_blocks_without_stack_overflow() {
+        use crate::block::BlockWriter;
+
+        let mut bytes = Vec::new();
+        for _ in 0..5_000 {
+            bytes.extend_from_slice(&BlockWriter::new(BlockType::Index).finish());
+        }
+
+        let mut enc = Encoder::new();
+        enc.encode_value(&Value::UInt(42)).unwrap();
+        bytes.extend_from_slice(&enc.finish().unwrap());
+
+        let mut dec = Decoder::new(&bytes);
+        let decoded = dec.decode_next().unwrap().to_owned_value();
+        assert_eq!(decoded, Value::UInt(42));
+
+        let mut dec_owned = Decoder::new(&bytes);
+        let decoded_owned = dec_owned.decode_next_owned().unwrap();
+        assert_eq!(decoded_owned, Value::UInt(42));
     }
 }

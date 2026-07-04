@@ -123,7 +123,7 @@ impl Parser {
                         format!("invalid binding name '{name}'"),
                     ));
                 }
-                let (value, next) = self.parse_rhs_or_nested(rhs.trim(), idx, line.indent)?;
+                let (value, next) = self.parse_rhs_or_nested(rhs.trim(), idx, line.indent, 0)?;
                 doc.bindings.push(Binding {
                     name: name.to_string(),
                     value,
@@ -132,7 +132,7 @@ impl Parser {
                 continue;
             }
 
-            let (value, next) = self.parse_value_at(idx)?;
+            let (value, next) = self.parse_value_at(idx, 0)?;
             doc.root = Some(value);
             idx = next;
         }
@@ -140,12 +140,12 @@ impl Parser {
         Ok(doc)
     }
 
-    fn parse_value_at(&self, idx: usize) -> Result<(Value, usize)> {
+    fn parse_value_at(&self, idx: usize, depth: usize) -> Result<(Value, usize)> {
         let line = self
             .lines
             .get(idx)
             .ok_or_else(|| parse_err(0, "internal parser index out of bounds".into()))?;
-        self.parse_value_from_header(line.text.trim(), idx, line.indent)
+        self.parse_value_from_header(line.text.trim(), idx, line.indent, depth)
     }
 
     fn parse_rhs_or_nested(
@@ -153,6 +153,7 @@ impl Parser {
         rhs: &str,
         line_idx: usize,
         line_indent: usize,
+        depth: usize,
     ) -> Result<(Value, usize)> {
         if rhs.is_empty() {
             let Some(next) = self.lines.get(line_idx + 1) else {
@@ -167,14 +168,14 @@ impl Parser {
                     "expected indented value after '='".into(),
                 ));
             }
-            return self.parse_value_at(line_idx + 1);
+            return self.parse_value_at(line_idx + 1, depth);
         }
 
         if self.next_line_is_child(line_idx, line_indent) && header_supports_block(rhs) {
-            return self.parse_value_from_header(rhs, line_idx, line_indent);
+            return self.parse_value_from_header(rhs, line_idx, line_indent, depth);
         }
 
-        Ok((parse_inline_expr(rhs)?, line_idx + 1))
+        Ok((parse_inline_expr(rhs, depth)?, line_idx + 1))
     }
 
     fn parse_value_from_header(
@@ -182,24 +183,26 @@ impl Parser {
         header: &str,
         line_idx: usize,
         line_indent: usize,
+        depth: usize,
     ) -> Result<(Value, usize)> {
+        check_depth(depth, self.lines[line_idx].number)?;
         let text = header.trim();
 
         if text.starts_with("map<")
             && !text.contains('[')
             && self.next_line_is_child(line_idx, line_indent)
         {
-            return self.parse_map_block(text, line_idx, line_indent);
+            return self.parse_map_block(text, line_idx, line_indent, depth);
         }
 
         if text.starts_with("seq<") && self.next_line_is_child(line_idx, line_indent) {
-            return self.parse_sequence_block(text, line_idx, line_indent);
+            return self.parse_sequence_block(text, line_idx, line_indent, depth);
         }
 
         if (text.starts_with("vec<") || text.starts_with("tensor<") || text.starts_with("mat<"))
             && self.next_line_is_child(line_idx, line_indent)
         {
-            return self.parse_tensor_block(text, line_idx, line_indent);
+            return self.parse_tensor_block(text, line_idx, line_indent, depth);
         }
 
         if text.starts_with("stream<") {
@@ -210,14 +213,14 @@ impl Parser {
             && self.next_line_is_child(line_idx, line_indent)
             && !text.contains('(')
         {
-            return self.parse_sum_struct_block(text, line_idx, line_indent);
+            return self.parse_sum_struct_block(text, line_idx, line_indent, depth);
         }
 
         if is_type_header(text) && self.has_field_children(line_idx, line_indent) {
-            return self.parse_struct_block(text, line_idx, line_indent);
+            return self.parse_struct_block(text, line_idx, line_indent, depth);
         }
 
-        let value = parse_inline_expr(text)?;
+        let value = parse_inline_expr(text, depth)?;
         Ok((value, line_idx + 1))
     }
 
@@ -226,6 +229,7 @@ impl Parser {
         header: &str,
         line_idx: usize,
         parent_indent: usize,
+        depth: usize,
     ) -> Result<(Value, usize)> {
         let type_name = if header.trim() == "struct" {
             None
@@ -257,7 +261,7 @@ impl Parser {
                     format!("invalid field name '{field_name}'"),
                 ));
             }
-            let (value, next) = self.parse_rhs_or_nested(rhs.trim(), idx, line.indent)?;
+            let (value, next) = self.parse_rhs_or_nested(rhs.trim(), idx, line.indent, depth + 1)?;
             fields.push(Field {
                 name: field_name.to_string(),
                 value,
@@ -273,6 +277,7 @@ impl Parser {
         header: &str,
         line_idx: usize,
         parent_indent: usize,
+        depth: usize,
     ) -> Result<(Value, usize)> {
         let (left, right) = split_once_required(header, "::", self.lines[line_idx].number)?;
         let type_name = {
@@ -321,7 +326,7 @@ impl Parser {
                     format!("invalid payload field '{field_name}'"),
                 ));
             }
-            let (value, next) = self.parse_rhs_or_nested(rhs.trim(), idx, line.indent)?;
+            let (value, next) = self.parse_rhs_or_nested(rhs.trim(), idx, line.indent, depth + 1)?;
             fields.push(Field {
                 name: field_name.to_string(),
                 value,
@@ -344,6 +349,7 @@ impl Parser {
         header: &str,
         line_idx: usize,
         parent_indent: usize,
+        depth: usize,
     ) -> Result<(Value, usize)> {
         let elem_type = parse_generic_type_arg(header);
         let mut idx = line_idx + 1;
@@ -366,7 +372,7 @@ impl Parser {
                     "inconsistent indentation in sequence".into(),
                 ));
             }
-            let (value, next) = self.parse_value_at(idx)?;
+            let (value, next) = self.parse_value_at(idx, depth + 1)?;
             items.push(value);
             idx = next;
         }
@@ -379,6 +385,7 @@ impl Parser {
         _header: &str,
         line_idx: usize,
         parent_indent: usize,
+        depth: usize,
     ) -> Result<(Value, usize)> {
         let mut idx = line_idx + 1;
         let child_indent = self
@@ -398,8 +405,8 @@ impl Parser {
 
             let line = &self.lines[idx];
             let (lhs, rhs) = split_once_required(&line.text, "=>", line.number)?;
-            let key = parse_inline_expr(lhs.trim())?;
-            let (value, next) = self.parse_rhs_or_nested(rhs.trim(), idx, line.indent)?;
+            let key = parse_inline_expr(lhs.trim(), depth + 1)?;
+            let (value, next) = self.parse_rhs_or_nested(rhs.trim(), idx, line.indent, depth + 1)?;
             pairs.push((key, value));
             idx = next;
         }
@@ -443,6 +450,7 @@ impl Parser {
         header: &str,
         line_idx: usize,
         parent_indent: usize,
+        depth: usize,
     ) -> Result<(Value, usize)> {
         let element_type = parse_generic_type_arg(header).unwrap_or_else(|| "f32".to_string());
         let shape = parse_shape(header)?;
@@ -461,13 +469,13 @@ impl Parser {
                 continue;
             }
 
-            if let Some(bytes) = parse_binary_placeholder(text) {
+            if let Some(bytes) = parse_binary_placeholder(text)? {
                 binary_blob = Some(vec![0u8; bytes]);
                 idx += 1;
                 continue;
             }
 
-            let value = parse_inline_expr(text)?;
+            let value = parse_inline_expr(text, depth + 1)?;
             collect_numeric_scalars(&value, &mut dense)?;
             idx += 1;
         }
@@ -600,7 +608,13 @@ fn strip_line_comment(line: &str) -> &str {
     line
 }
 
-fn parse_inline_expr(input: &str) -> Result<Value> {
+fn parse_inline_expr(input: &str, depth: usize) -> Result<Value> {
+    if depth > MAX_NESTING_DEPTH {
+        return Err(SurpError::InvalidData(format!(
+            "nesting depth {depth} exceeds maximum {MAX_NESTING_DEPTH}"
+        )));
+    }
+
     let s = input.trim();
     if s.is_empty() {
         return Err(SurpError::InvalidData("empty inline expression".into()));
@@ -630,7 +644,7 @@ fn parse_inline_expr(input: &str) -> Result<Value> {
     }
 
     if let Some(rest) = s.strip_prefix("ref ") {
-        let value = parse_inline_expr(rest.trim())?;
+        let value = parse_inline_expr(rest.trim(), depth + 1)?;
         return Ok(Value::Reference(Reference::ById(Box::new(value))));
     }
 
@@ -682,11 +696,11 @@ fn parse_inline_expr(input: &str) -> Result<Value> {
     }
 
     if s.starts_with("map<") && s.contains('[') && s.ends_with(']') {
-        return parse_inline_map(s);
+        return parse_inline_map(s, depth);
     }
 
     if s.starts_with('[') && s.ends_with(']') {
-        return parse_inline_sequence(s);
+        return parse_inline_sequence(s, depth);
     }
 
     if s.starts_with('(') && s.ends_with(')') {
@@ -699,7 +713,7 @@ fn parse_inline_expr(input: &str) -> Result<Value> {
         }
         let mut items = Vec::new();
         for token in split_top_level(inside, ',') {
-            items.push(parse_inline_expr(token.trim())?);
+            items.push(parse_inline_expr(token.trim(), depth + 1)?);
         }
         return Ok(Value::Sequence(Sequence {
             elem_type: None,
@@ -708,7 +722,7 @@ fn parse_inline_expr(input: &str) -> Result<Value> {
     }
 
     if s.contains("::") {
-        return parse_inline_sum(s);
+        return parse_inline_sum(s, depth);
     }
 
     if let Some(num) = parse_numeric_literal(s)? {
@@ -724,7 +738,7 @@ fn parse_inline_expr(input: &str) -> Result<Value> {
     )))
 }
 
-fn parse_inline_sum(s: &str) -> Result<Value> {
+fn parse_inline_sum(s: &str, depth: usize) -> Result<Value> {
     let (left, right) = split_once_required(s, "::", 0)?;
     let type_name = {
         let t = left.trim();
@@ -754,7 +768,7 @@ fn parse_inline_sum(s: &str) -> Result<Value> {
                 let (name, value) = split_once_required(part, ":", 0)?;
                 fields.push(Field {
                     name: name.trim().to_string(),
-                    value: parse_inline_expr(value.trim())?,
+                    value: parse_inline_expr(value.trim(), depth + 1)?,
                 });
             }
             return Ok(Value::Sum(Sum {
@@ -769,7 +783,7 @@ fn parse_inline_sum(s: &str) -> Result<Value> {
             if part.trim().is_empty() {
                 continue;
             }
-            tuple_items.push(parse_inline_expr(part.trim())?);
+            tuple_items.push(parse_inline_expr(part.trim(), depth + 1)?);
         }
         return Ok(Value::Sum(Sum {
             type_name,
@@ -785,7 +799,7 @@ fn parse_inline_sum(s: &str) -> Result<Value> {
     }))
 }
 
-fn parse_inline_sequence(s: &str) -> Result<Value> {
+fn parse_inline_sequence(s: &str, depth: usize) -> Result<Value> {
     let inside = &s[1..s.len() - 1];
     let tokens = split_top_level(inside, ',');
     let mut items = Vec::new();
@@ -794,7 +808,7 @@ fn parse_inline_sequence(s: &str) -> Result<Value> {
         if t.is_empty() {
             continue;
         }
-        items.push(parse_inline_expr(t)?);
+        items.push(parse_inline_expr(t, depth + 1)?);
     }
 
     Ok(Value::Sequence(Sequence {
@@ -803,7 +817,7 @@ fn parse_inline_sequence(s: &str) -> Result<Value> {
     }))
 }
 
-fn parse_inline_map(s: &str) -> Result<Value> {
+fn parse_inline_map(s: &str, depth: usize) -> Result<Value> {
     let open = s
         .find('[')
         .ok_or_else(|| SurpError::InvalidData("invalid inline map".into()))?;
@@ -818,8 +832,8 @@ fn parse_inline_map(s: &str) -> Result<Value> {
         }
         let (lhs, rhs) = split_once_required(token, "=>", 0)?;
         pairs.push((
-            parse_inline_expr(lhs.trim())?,
-            parse_inline_expr(rhs.trim())?,
+            parse_inline_expr(lhs.trim(), depth + 1)?,
+            parse_inline_expr(rhs.trim(), depth + 1)?,
         ));
     }
 
@@ -1157,7 +1171,7 @@ fn parse_annotation_line(text: &str) -> Result<Annotation> {
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .map(|v| {
-            parse_inline_expr(v).and_then(|val| match val {
+            parse_inline_expr(v, 0).and_then(|val| match val {
                 Value::Scalar(s) => Ok(s),
                 _ => Err(SurpError::InvalidData(
                     "annotation values must be scalar".into(),
@@ -1211,13 +1225,33 @@ fn parse_shape(header: &str) -> Result<Vec<Option<u64>>> {
     Ok(out)
 }
 
-fn parse_binary_placeholder(text: &str) -> Option<usize> {
+/// Maximum size accepted for a `<binary: N bytes>` placeholder in tensor
+/// blocks. Matches `Limits::default().max_block_size` (64 MiB) so a crafted
+/// CTN file cannot request an exabyte-scale allocation via a huge `N`.
+const MAX_BINARY_PLACEHOLDER_BYTES: usize = 64 * 1024 * 1024;
+
+fn parse_binary_placeholder(text: &str) -> Result<Option<usize>> {
     let body = text.trim();
-    let body = body.strip_prefix("<binary:")?;
-    let body = body.strip_suffix('>')?;
+    let Some(body) = body.strip_prefix("<binary:") else {
+        return Ok(None);
+    };
+    let Some(body) = body.strip_suffix('>') else {
+        return Ok(None);
+    };
     let body = body.trim();
-    let body = body.strip_suffix("bytes")?.trim();
-    body.parse::<usize>().ok()
+    let Some(body) = body.strip_suffix("bytes") else {
+        return Ok(None);
+    };
+    let body = body.trim();
+    let Ok(bytes) = body.parse::<usize>() else {
+        return Ok(None);
+    };
+    if bytes > MAX_BINARY_PLACEHOLDER_BYTES {
+        return Err(SurpError::InvalidData(format!(
+            "binary placeholder size {bytes} exceeds maximum {MAX_BINARY_PLACEHOLDER_BYTES} bytes"
+        )));
+    }
+    Ok(Some(bytes))
 }
 
 fn collect_numeric_scalars(value: &Value, out: &mut Vec<f64>) -> Result<()> {
@@ -1378,6 +1412,22 @@ fn find_unquoted(haystack: &str, needle: &str) -> Option<usize> {
     }
 
     None
+}
+
+/// Maximum nesting depth accepted by the recursive-descent CTN parser
+/// (structs, sums, sequences, maps, tensors, and inline expressions).
+/// Mirrors CBF's `decode_segment` depth check (see cbf.rs) so a maliciously
+/// deep CTN document cannot overflow the native call stack.
+const MAX_NESTING_DEPTH: usize = 64;
+
+fn check_depth(depth: usize, line: usize) -> Result<()> {
+    if depth > MAX_NESTING_DEPTH {
+        return Err(parse_err(
+            line,
+            format!("nesting depth {depth} exceeds maximum {MAX_NESTING_DEPTH}"),
+        ));
+    }
+    Ok(())
 }
 
 fn parse_err(line: usize, message: String) -> SurpError {
@@ -1771,6 +1821,69 @@ tensor<f32>[2, 2]
         match tensor.data {
             TensorData::DenseF64(values) => assert_eq!(values.len(), 4),
             _ => panic!("expected dense f64 tensor data"),
+        }
+    }
+
+    /// A crafted `<binary: N bytes>` placeholder with an oversized `N` used
+    /// to trigger `vec![0u8; N]` with no upper bound, allocating exabytes
+    /// and aborting the process. Parsing must now fail cleanly instead.
+    #[test]
+    fn parse_binary_placeholder_rejects_oversized_length() {
+        let input = "tensor<f32>[1]\n  <binary: 18446744073709551615 bytes>\n";
+        let err = parse_value(input).unwrap_err();
+        match err {
+            SurpError::InvalidData(msg) => {
+                assert!(
+                    msg.contains("exceeds maximum"),
+                    "unexpected error message: {msg}"
+                );
+            }
+            other => panic!("expected InvalidData error, got {other:?}"),
+        }
+    }
+
+    /// The recursive-descent parser previously had no nesting-depth limit,
+    /// so a crafted CTN document with deeply nested struct blocks could
+    /// overflow the native call stack. This builds nested `struct`-style
+    /// blocks well beyond `MAX_NESTING_DEPTH` and asserts a clean parse
+    /// error rather than a crash.
+    #[test]
+    fn parser_rejects_excessive_struct_nesting_depth() {
+        let depth = MAX_NESTING_DEPTH * 2;
+        let mut lines = vec!["Wrapper".to_string()];
+        for i in 1..=depth {
+            lines.push(format!("{}inner = Wrapper", "  ".repeat(i)));
+        }
+        lines.push(format!("{}inner = 1", "  ".repeat(depth + 1)));
+        let input = lines.join("\n");
+
+        let err = parse_value(&input).unwrap_err();
+        match err {
+            SurpError::ParseError { message, .. } => {
+                assert!(
+                    message.contains("nesting depth"),
+                    "unexpected error message: {message}"
+                );
+            }
+            other => panic!("expected ParseError for excessive nesting, got {other:?}"),
+        }
+    }
+
+    /// Deeply nested inline `ref` expressions must also be bounded, since
+    /// they recurse through `parse_inline_expr` independently of the
+    /// line-based struct/sequence/map parsers.
+    #[test]
+    fn parser_rejects_excessive_ref_chain_nesting_depth() {
+        let input = format!("{}1", "ref ".repeat(MAX_NESTING_DEPTH * 2));
+        let err = parse_value(&input).unwrap_err();
+        match err {
+            SurpError::InvalidData(msg) => {
+                assert!(
+                    msg.contains("nesting depth"),
+                    "unexpected error message: {msg}"
+                );
+            }
+            other => panic!("expected InvalidData nesting error, got {other:?}"),
         }
     }
 }
