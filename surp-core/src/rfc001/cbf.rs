@@ -581,59 +581,56 @@ fn encode_sequence(seq: &Sequence, ctx: &EncodeCtx, payload: &mut Vec<u8>) -> Re
         None => payload.push(0),
     }
 
-    encode_varint_vec(seq.items.len() as u64, payload);
+    let count = seq.items.len();
+    encode_varint_vec(count as u64, payload);
 
-    let mut encoded_items = Vec::with_capacity(seq.items.len());
-    for item in &seq.items {
-        let mut buf = Vec::new();
-        encode_segment(item, ctx, &mut buf)?;
-        encoded_items.push(buf);
-    }
+    // Reserve the offset table up front and encode each item directly into
+    // `payload`, recording its start offset as we go. This avoids the
+    // previous approach of encoding every item into its own throwaway
+    // `Vec<u8>` purely to learn its length, then copying every buffer a
+    // second time into `payload` — an avoidable doubling of allocations and
+    // copies proportional to sequence size. The on-disk layout (offset
+    // table immediately after the count, offsets relative to the end of the
+    // table, item segments back-to-back) is unchanged.
+    let table_start = payload.len();
+    let table_len = count * 4;
+    payload.resize(table_start + table_len, 0);
+    let table_end = payload.len();
 
-    let table_len = encoded_items.len() * 4;
-    let mut running = 0usize;
-    for item in &encoded_items {
-        let off = u32::try_from(running).map_err(|_| {
+    for (idx, item) in seq.items.iter().enumerate() {
+        let item_start = payload.len();
+        encode_segment(item, ctx, payload)?;
+        let off = u32::try_from(item_start - table_end).map_err(|_| {
             SurpError::InvalidData("sequence segment payload exceeds u32 offsets".into())
         })?;
-        payload.extend_from_slice(&off.to_le_bytes());
-        running = running.saturating_add(item.len());
-    }
-
-    debug_assert_eq!(
-        payload.len() - table_len,
-        payload.len() - encoded_items.len() * 4
-    );
-
-    for item in &encoded_items {
-        payload.extend_from_slice(item);
+        let off_pos = table_start + idx * 4;
+        payload[off_pos..off_pos + 4].copy_from_slice(&off.to_le_bytes());
     }
 
     Ok(())
 }
 
 fn encode_map(map: &[(Value, Value)], ctx: &EncodeCtx, payload: &mut Vec<u8>) -> Result<()> {
-    encode_varint_vec(map.len() as u64, payload);
+    let count = map.len();
+    encode_varint_vec(count as u64, payload);
 
-    let mut encoded_pairs = Vec::with_capacity(map.len());
-    for (key, value) in map {
-        let mut buf = Vec::new();
-        encode_segment(key, ctx, &mut buf)?;
-        encode_segment(value, ctx, &mut buf)?;
-        encoded_pairs.push(buf);
-    }
+    // Same approach as `encode_sequence`: encode each (key, value) pair
+    // directly into `payload`, recording its start offset, instead of
+    // building a throwaway `Vec<u8>` per pair and copying it twice.
+    let table_start = payload.len();
+    let table_len = count * 4;
+    payload.resize(table_start + table_len, 0);
+    let table_end = payload.len();
 
-    let mut running = 0usize;
-    for pair in &encoded_pairs {
-        let off = u32::try_from(running).map_err(|_| {
+    for (idx, (key, value)) in map.iter().enumerate() {
+        let pair_start = payload.len();
+        encode_segment(key, ctx, payload)?;
+        encode_segment(value, ctx, payload)?;
+        let off = u32::try_from(pair_start - table_end).map_err(|_| {
             SurpError::InvalidData("map segment payload exceeds u32 offsets".into())
         })?;
-        payload.extend_from_slice(&off.to_le_bytes());
-        running = running.saturating_add(pair.len());
-    }
-
-    for pair in &encoded_pairs {
-        payload.extend_from_slice(pair);
+        let off_pos = table_start + idx * 4;
+        payload[off_pos..off_pos + 4].copy_from_slice(&off.to_le_bytes());
     }
 
     Ok(())
@@ -1680,21 +1677,49 @@ fn resolve_references(value: &Value, doc: &Document, stack: &mut HashSet<String>
     }
 }
 
-fn crc64_ecma(data: &[u8]) -> u64 {
+/// Build the 256-entry CRC64-ECMA lookup table at compile time.
+///
+/// `table[i]` is the result of running the (equivalent) bit-at-a-time
+/// CRC64-ECMA loop over a single byte with value `i` starting from a zero
+/// CRC register — i.e. the compound effect of 8 shift/xor rounds seeded
+/// with `(i as u64) << 56`.
+const fn build_crc64_table() -> [u64; 256] {
     const POLY: u64 = 0x42F0_E1EB_A9EA_3693;
-    let mut crc = 0u64;
-
-    for &byte in data {
-        crc ^= (byte as u64) << 56;
-        for _ in 0..8 {
+    let mut table = [0u64; 256];
+    let mut i = 0usize;
+    while i < 256 {
+        let mut crc = (i as u64) << 56;
+        let mut bit = 0;
+        while bit < 8 {
             if (crc & 0x8000_0000_0000_0000) != 0 {
                 crc = (crc << 1) ^ POLY;
             } else {
                 crc <<= 1;
             }
+            bit += 1;
         }
+        table[i] = crc;
+        i += 1;
     }
+    table
+}
 
+/// Precomputed CRC64-ECMA lookup table (built once at compile time via
+/// `const fn`, so there is no runtime initialization cost).
+static CRC64_TABLE: [u64; 256] = build_crc64_table();
+
+/// Table-driven CRC64-ECMA over `data`.
+///
+/// Equivalent to (but far faster than) the naive bit-at-a-time loop: each
+/// byte now costs one table lookup plus a shift/xor instead of 8 branchy
+/// shift/xor rounds. See `crc64_table_matches_bitloop_reference` for a test
+/// proving equivalence against the original bit-loop implementation.
+fn crc64_ecma(data: &[u8]) -> u64 {
+    let mut crc = 0u64;
+    for &byte in data {
+        let idx = (((crc >> 56) as u8) ^ byte) as usize;
+        crc = (crc << 8) ^ CRC64_TABLE[idx];
+    }
     crc
 }
 
@@ -1772,6 +1797,46 @@ mod tests {
         let encoded = encode_value(&value, EncodeOptions::default()).unwrap();
         let decoded = decode_value(&encoded).unwrap();
         assert_eq!(decoded, value);
+    }
+
+    /// Reference (slow, bit-at-a-time) CRC64-ECMA implementation, kept only
+    /// in this test to prove the table-driven `crc64_ecma` in production
+    /// code is equivalent before/after the perf refactor that replaced it.
+    fn crc64_ecma_bitloop_reference(data: &[u8]) -> u64 {
+        const POLY: u64 = 0x42F0_E1EB_A9EA_3693;
+        let mut crc = 0u64;
+        for &byte in data {
+            crc ^= (byte as u64) << 56;
+            for _ in 0..8 {
+                if (crc & 0x8000_0000_0000_0000) != 0 {
+                    crc = (crc << 1) ^ POLY;
+                } else {
+                    crc <<= 1;
+                }
+            }
+        }
+        crc
+    }
+
+    #[test]
+    fn crc64_table_matches_bitloop_reference() {
+        let samples: &[&[u8]] = &[
+            b"",
+            b"a",
+            b"123456789", // classic CRC check-value input
+            b"The quick brown fox jumps over the lazy dog",
+            &[0u8; 64],
+            &[0xFFu8; 64],
+            &(0u8..=255u8).collect::<Vec<u8>>(),
+        ];
+
+        for sample in samples {
+            assert_eq!(
+                crc64_ecma(sample),
+                crc64_ecma_bitloop_reference(sample),
+                "table-driven CRC64 diverges from bit-loop reference for {sample:?}"
+            );
+        }
     }
 
     #[test]

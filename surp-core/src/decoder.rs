@@ -730,6 +730,14 @@ impl<'a> Decoder<'a> {
                     return Err(SurpError::TooManyItems(count, self.limits.max_items));
                 }
 
+                // Mirror the zero-copy path's per-item container cost estimate
+                // (see the StartArray arm of `decode_value_at`) so that
+                // container-heavy payloads (many small/empty nested arrays)
+                // are tracked against `max_memory` just like the zero-copy path,
+                // not just LenDelimited string/byte payloads.
+                let alloc = count.min(1024) * std::mem::size_of::<Value>();
+                self.track_alloc(alloc)?;
+
                 self.depth += 1;
                 let mut items = Vec::with_capacity(count.min(1024));
                 for _ in 0..count {
@@ -761,6 +769,14 @@ impl<'a> Decoder<'a> {
                 if count > self.limits.max_items {
                     return Err(SurpError::TooManyItems(count, self.limits.max_items));
                 }
+
+                // Mirror the zero-copy path's per-item container cost estimate
+                // (see the StartObject arm of `decode_value_at`), using the
+                // owned equivalents of the borrowed types (`String` in place
+                // of `&str`, `Value` in place of `SurpValue`).
+                let alloc =
+                    count.min(1024) * (std::mem::size_of::<String>() + std::mem::size_of::<Value>());
+                self.track_alloc(alloc)?;
 
                 self.depth += 1;
                 let mut entries = Vec::with_capacity(count.min(1024));
@@ -1056,16 +1072,22 @@ impl<'a> Decoder<'a> {
 // Bump-allocated decoder (feature = "fast-alloc")
 // ---------------------------------------------------------------------------
 
-/// A decoder that uses a per-block bump allocator for scratch memory.
+/// A decoder that carries a per-instance bump allocator alongside the
+/// standard `Decoder`, for callers who want bump-allocated scratch space
+/// for their own advanced/manual use (via [`BumpDecoder::alloc_bytes`] /
+/// [`BumpDecoder::alloc_str`]).
 ///
-/// When the `fast-alloc` feature is enabled, `BumpDecoder` wraps the
-/// standard `Decoder` and provides a `bumpalo::Bump` arena that is reset
-/// between blocks. This eliminates many small heap allocations during
-/// decode, improving throughput for workloads with many small values.
-///
-/// The returned `SurpValue` and `Value` types still use standard heap
-/// allocation — the bump arena is used only for internal scratch vectors
-/// (e.g., the per-block string table).
+/// **Current behavior:** `decode_next`, `decode_all`, and `decode_all_owned`
+/// simply delegate to the inner plain `Decoder` and do **not** route any
+/// scratch allocations (e.g. the per-block string table, or the returned
+/// `SurpValue`/`Value` trees) through `self.arena` — those still use
+/// ordinary heap allocation exactly as the plain `Decoder` does. The arena
+/// is only touched by `reset_arena`, `arena_allocated`, and the manual
+/// `alloc_bytes`/`alloc_str` helpers below. Wiring the automatic decode path
+/// through the arena would require making `Decoder`'s internal string-table
+/// storage generic over the allocator, which is out of scope here; if you
+/// need bump-allocated scratch during decode today, drive it manually via
+/// `inner_mut()` together with `alloc_bytes`/`alloc_str`.
 ///
 /// # Example
 ///
@@ -1344,6 +1366,38 @@ mod tests {
         );
     }
 
+    /// The owned decode path (`decode_all_owned` / `decode_value_owned_at`)
+    /// used to only call `track_alloc` for `LenDelimited` string/byte
+    /// payloads, never for `StartArray`/`StartObject` containers. This meant
+    /// a payload dominated by many small/empty nested arrays (little string
+    /// data, but real `Vec<Value>` allocation happening under the hood)
+    /// would never trip `max_memory`, even though `Surp::from_surp_bytes_with_limits`
+    /// documents that it "enforces all Limits during binary decode: nesting
+    /// depth, memory, block size, string length, and item count."
+    /// This test isolates the container-count case (as opposed to
+    /// `memory_limit_enforcement`, which covers the long-string case) by
+    /// encoding many small empty arrays and using a tight `max_memory` limit.
+    #[test]
+    fn memory_limit_enforcement_container_count() {
+        // Many small nested empty arrays: negligible string/byte payload,
+        // but real container allocation per item.
+        let val = Value::Array((0..5000).map(|_| Value::Array(vec![])).collect());
+        let mut enc = Encoder::with_limits(Limits::unlimited());
+        enc.encode_value(&val).unwrap();
+        let bytes = enc.finish().unwrap();
+
+        let limits = Limits {
+            max_memory: 256,
+            ..Limits::default()
+        };
+        let mut dec = Decoder::with_limits(&bytes, limits);
+        let err = dec.decode_all_owned().unwrap_err();
+        assert!(
+            matches!(err, SurpError::MemoryLimitExceeded(_, _)),
+            "expected MemoryLimitExceeded from container-heavy owned decode, got {err:?}"
+        );
+    }
+
     #[test]
     fn skip_value_works() {
         // Encode a complex value, then manually position decoder and skip it.
@@ -1441,7 +1495,59 @@ mod tests {
         let decoded = dec.decode_all_owned().unwrap();
         assert_eq!(decoded.len(), 1);
         assert_eq!(decoded[0], val);
-        assert!(dec.arena_allocated() > 0, "arena should have been used");
+    }
+
+    /// `decode_next`/`decode_all`/`decode_all_owned` on `BumpDecoder` simply
+    /// delegate to the inner plain `Decoder` and never touch `self.arena` —
+    /// so `arena_allocated() > 0` alone (as the previous version of this test
+    /// asserted) proves nothing about decode actually using the arena: it's
+    /// satisfied merely by `bumpalo::Bump::with_capacity`'s initial chunk
+    /// reservation. This test instead asserts the honest current behavior
+    /// (arena usage is unchanged by automatic decode) while confirming the
+    /// arena is genuinely usable for manual scratch allocations via
+    /// `alloc_str`/`alloc_bytes`.
+    #[cfg(feature = "fast-alloc")]
+    #[test]
+    fn bump_decoder_arena_unused_by_automatic_decode() {
+        let val = Value::Array(vec![
+            Value::Str("hello".into()),
+            Value::UInt(42),
+            Value::Object(vec![("key".into(), Value::Bool(true))]),
+        ]);
+        let mut enc = Encoder::new();
+        enc.encode_value(&val).unwrap();
+        let bytes = enc.finish().unwrap();
+
+        let mut dec = BumpDecoder::new(&bytes);
+        let baseline = dec.arena_allocated();
+
+        let decoded = dec.decode_all_owned().unwrap();
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0], val);
+        assert_eq!(
+            dec.arena_allocated(),
+            baseline,
+            "automatic decode should not grow the arena; it is not wired into the decode path"
+        );
+
+        // Manual scratch usage via alloc_str/alloc_bytes is genuinely usable
+        // (this is the arena's actual current role: available for
+        // hand-driven scratch, not automatically wired into decode). Note
+        // that `arena_allocated()` reports total *chunk capacity*, not bytes
+        // used within a chunk (see bumpalo's docs), so a small manual
+        // allocation that fits in the already-reserved initial chunk won't
+        // move the counter — only exceeding that capacity forces a new
+        // chunk and grows it, which we exercise here with a large buffer.
+        let s = dec.alloc_str("manual scratch allocation");
+        assert_eq!(s, "manual scratch allocation");
+
+        let big = vec![0xABu8; 8192]; // larger than the default 4096-byte initial chunk
+        let allocated = dec.alloc_bytes(&big);
+        assert_eq!(allocated, &big[..]);
+        assert!(
+            dec.arena_allocated() > baseline,
+            "a manual allocation exceeding the initial chunk capacity should grow the arena"
+        );
     }
 
     #[cfg(feature = "lz4")]
