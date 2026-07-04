@@ -24,3 +24,4 @@ xxhash-rust = { workspace = true }
 
 [dev-dependencies]
 surp-core = { workspace = true }
+trybuild = "1"
