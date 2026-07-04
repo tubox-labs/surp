@@ -109,7 +109,16 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python dependencies
-        run: pip install msgpack
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install maturin msgpack
+
+      - name: Build native Python package
+        run: |
+          . .venv/bin/activate
+          cd surp-python && maturin develop --release
 
       # Restore Python baseline
       - name: Restore Python baseline
@@ -122,6 +131,7 @@ jobs:
       - name: Run Python benchmark (with baseline)
         if: steps.py-baseline.outputs.cache-hit == 'true'
         run: |
+          . .venv/bin/activate
           python3 bench/python/bench_surp.py \
             --mode ${{ github.event.inputs.mode || 'ci' }} \
             --baseline bench/results/python/python_baseline.json \
@@ -131,6 +141,7 @@ jobs:
       - name: Run Python benchmark (no baseline)
         if: steps.py-baseline.outputs.cache-hit != 'true'
         run: |
+          . .venv/bin/activate
           python3 bench/python/bench_surp.py \
             --mode ${{ github.event.inputs.mode || 'ci' }} \
             --save-baseline \
@@ -141,6 +152,7 @@ jobs:
       - name: Save Python baseline
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
+          . .venv/bin/activate
           python3 bench/python/bench_surp.py \
             --mode ${{ github.event.inputs.mode || 'ci' }} \
             --save-baseline \
@@ -181,6 +193,7 @@ jobs:
           path: rust-results/
 
       - uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: python-bench-results
           path: python-results/
