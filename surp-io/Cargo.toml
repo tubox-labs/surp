@@ -20,10 +20,10 @@ mmap = ["dep:memmap2"]
 
 [dependencies]
 surp-core = { workspace = true }
-tokio = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["io-util"] }
 thiserror = { workspace = true }
 bytes = { workspace = true }
 memmap2 = { workspace = true, optional = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["test-util"] }
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "test-util"] }
