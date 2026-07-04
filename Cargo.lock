@@ -1312,6 +1312,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "surp-mcp"
+version = "1.0.2"
+dependencies = [
+ "base64",
+ "serde",
+ "serde_json",
+ "surp-core",
+ "thiserror",
+]
+
+[[package]]
 name = "surp-python"
 version = "1.0.2"
 dependencies = [
@@ -1323,6 +1334,7 @@ dependencies = [
 name = "surp-simd"
 version = "1.0.2"
 dependencies = [
+ "criterion",
  "surp-core",
 ]
 
