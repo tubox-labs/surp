@@ -372,3 +372,14 @@ class TestRfc001Cql:
         assert [value.to_ctn() for value in rfc001.query_ctn_model(RFC_COMPLEX_CTN, ".name")] == [
             '"Alice"'
         ]
+
+    def test_query_one_returns_first_match_or_none(self):
+        # rfc_query_one_ctn/rfc_query_one_cbf mirror surp_core::rfc001::query_one,
+        # which was previously unbound from Python entirely.
+        match = rfc001.query_one_ctn(RFC_COMPLEX_CTN, ".name")
+        assert match["value"] == "Alice"
+        assert rfc001.query_one_ctn(RFC_COMPLEX_CTN, ".does_not_exist") is None
+
+        data = rfc001.compile_ctn(RFC_COMPLEX_CTN)
+        assert rfc001.query_one_cbf(data, ".name", as_ctn=True) == '"Alice"'
+        assert rfc001.query_one_cbf(data, ".does_not_exist") is None

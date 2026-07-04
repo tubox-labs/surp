@@ -44,6 +44,20 @@ def test_query_one_returns_scalar_and_raises_on_miss():
         embedding.query_one(".missing")
 
 
+def test_query_does_not_mask_programming_errors_as_query_errors():
+    # `surp.model._query.query` used to catch bare `Exception`, so a genuine
+    # bug (e.g. an AttributeError from a broken `to_cbf()`) was silently
+    # relabeled as SurpQueryError instead of propagating as-is.
+    from surp.model._query import query
+
+    class Broken:
+        def to_cbf(self):
+            raise AttributeError("boom: not a real model")
+
+    with pytest.raises(AttributeError, match="boom"):
+        query(Broken(), ".label")
+
+
 @annotation("surp", "1.0")
 class UserDocument(SurpDocument):
     __root__ = "user"

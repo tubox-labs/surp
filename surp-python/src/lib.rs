@@ -64,13 +64,50 @@ create_exception!(
     "Error in RFC-001 CTN/CBF/CQL processing."
 );
 
-/// Map a surp_core error to our custom exception hierarchy.
+/// Map a `surp_core::SurpError` to our custom exception hierarchy by matching
+/// on the actual error *variant* rather than string-searching the formatted
+/// `Display` message. Substring matching on the message is brittle (any
+/// wording change to `SurpError`'s `Display` impl would silently break the
+/// classification) and only handles one variant specially, collapsing every
+/// other one into a generic exception regardless of what actually failed.
+///
+/// The match below is exhaustive over `SurpError`'s variants (no wildcard
+/// arm), so adding a new variant in `surp-core` causes a compile error here
+/// until it is explicitly routed to a Python exception class.
 fn map_decode_error(e: surp_core::SurpError) -> PyErr {
+    use surp_core::SurpError as CoreError;
     let msg = e.to_string();
-    if msg.contains("Checksum mismatch") {
-        SurpChecksumError::new_err(msg)
-    } else {
-        SurpDecodeError::new_err(msg)
+    match e {
+        // The only variant with a dedicated, more specific Python exception
+        // class today.
+        CoreError::ChecksumMismatch { .. } => SurpChecksumError::new_err(msg),
+
+        // Everything else still maps to the generic decode-error class: none
+        // of these variants have a more specific Python exception yet, but
+        // each is listed explicitly (instead of via `_`) so this function
+        // must be updated whenever `SurpError` gains a new variant.
+        CoreError::Io(_)
+        | CoreError::InvalidMagic
+        | CoreError::UnsupportedVersion(_)
+        | CoreError::InvalidWireType(_)
+        | CoreError::VarintOverflow
+        | CoreError::UnexpectedEof(_)
+        | CoreError::InvalidUtf8(_)
+        | CoreError::NestingTooDeep(_, _)
+        | CoreError::BlockTooLarge(_, _)
+        | CoreError::TooManyItems(_, _)
+        | CoreError::UnknownCompression(_)
+        | CoreError::DecompressionError(_)
+        | CoreError::InvalidBlockType(_)
+        | CoreError::ParseError { .. }
+        | CoreError::SchemaMismatch(_)
+        | CoreError::MemoryLimitExceeded(_, _)
+        | CoreError::InvalidBase64(_)
+        | CoreError::InvalidData(_)
+        | CoreError::LengthOverflow(_)
+        | CoreError::InvalidReference(_, _)
+        | CoreError::DecompressionRatioExceeded { .. }
+        | CoreError::StringTooLong(_, _) => SurpDecodeError::new_err(msg),
     }
 }
 
@@ -249,6 +286,41 @@ fn parse_compression(comp: Option<&str>) -> PyResult<CompressionType> {
         )));
     }
     Ok(ct)
+}
+
+/// Build a `Limits` for a decode entry point, applying any Python-supplied
+/// per-field overrides on top of `Limits::default()` (when `strict` is
+/// true) or `Limits::unlimited()` (when `strict` is false).
+///
+/// `max_nesting_depth` always comes from `max_depth`, which has had its own
+/// dedicated parameter since before this helper existed; the other fields
+/// (`max_block_size`, `max_items`, `max_memory`, `max_string_length`,
+/// `max_decompression_ratio`) previously had no way to be overridden from
+/// Python at all and silently used whatever `strict` implied.
+#[allow(clippy::too_many_arguments)]
+fn build_limits(
+    strict: bool,
+    max_depth: usize,
+    max_block_size: Option<usize>,
+    max_items: Option<usize>,
+    max_memory: Option<usize>,
+    max_string_length: Option<usize>,
+    max_decompression_ratio: Option<usize>,
+) -> Limits {
+    let base = if strict {
+        Limits::default()
+    } else {
+        Limits::unlimited()
+    };
+    Limits {
+        max_nesting_depth: max_depth,
+        max_block_size: max_block_size.unwrap_or(base.max_block_size),
+        max_items: max_items.unwrap_or(base.max_items),
+        max_memory: max_memory.unwrap_or(base.max_memory),
+        max_string_length: max_string_length.unwrap_or(base.max_string_length),
+        max_decompression_ratio: max_decompression_ratio
+            .unwrap_or(base.max_decompression_ratio),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1293,8 +1365,14 @@ fn dumps<'py>(
     let comp_type = parse_compression(compression)?;
     encoder.set_compression(comp_type);
 
-    encoder.encode_value(&value).map_err(map_encode_error)?;
-    let bytes = encoder.finish().map_err(map_encode_error)?;
+    // `value` and `encoder` are pure-Rust data at this point (no Python
+    // objects involved), so the actual encode work can run with the GIL
+    // released, letting other Python threads make progress concurrently.
+    let encode_result: Result<Vec<u8>, surp_core::SurpError> = py.detach(move || {
+        encoder.encode_value(&value)?;
+        encoder.finish()
+    });
+    let bytes = encode_result.map_err(map_encode_error)?;
     Ok(PyBytes::new(py, &bytes))
 }
 
@@ -1321,29 +1399,41 @@ fn dumps<'py>(
 ///     >>> import surp
 ///     >>> obj = surp.loads(data)
 #[pyfunction]
-#[pyo3(signature = (data, *, strict=true, max_depth=128))]
+#[pyo3(signature = (
+    data, *, strict=true, max_depth=128,
+    max_block_size=None, max_items=None, max_memory=None,
+    max_string_length=None, max_decompression_ratio=None
+))]
+#[allow(clippy::too_many_arguments)]
 fn loads<'py>(
     py: Python<'py>,
     data: &Bound<'py, PyBytes>,
     strict: bool,
     max_depth: usize,
+    max_block_size: Option<usize>,
+    max_items: Option<usize>,
+    max_memory: Option<usize>,
+    max_string_length: Option<usize>,
+    max_decompression_ratio: Option<usize>,
 ) -> PyResult<Bound<'py, PyAny>> {
     let buf = data.as_bytes();
+    let limits = build_limits(
+        strict,
+        max_depth,
+        max_block_size,
+        max_items,
+        max_memory,
+        max_string_length,
+        max_decompression_ratio,
+    );
 
-    let limits = if strict {
-        Limits {
-            max_nesting_depth: max_depth,
-            ..Limits::default()
-        }
-    } else {
-        Limits {
-            max_nesting_depth: max_depth,
-            ..Limits::unlimited()
-        }
-    };
-
-    let mut decoder = CoreDecoder::with_limits(buf, limits);
-    let values = decoder.decode_all_owned().map_err(map_decode_error)?;
+    // Decoding pure bytes into `Value`s never touches Python objects, so it
+    // can safely run with the GIL released.
+    let decode_result: Result<Vec<Value>, surp_core::SurpError> = py.detach(move || {
+        let mut decoder = CoreDecoder::with_limits(buf, limits);
+        decoder.decode_all_owned()
+    });
+    let values = decode_result.map_err(map_decode_error)?;
 
     if values.len() == 1 {
         value_to_py(py, &values[0])
@@ -1394,11 +1484,14 @@ fn dump(
     let comp_type = parse_compression(compression)?;
     encoder.set_compression(comp_type);
 
-    encoder.encode_value(&value).map_err(map_encode_error)?;
-    let bytes = encoder.finish().map_err(map_encode_error)?;
+    let py = fp.py();
+    let encode_result: Result<Vec<u8>, surp_core::SurpError> = py.detach(move || {
+        encoder.encode_value(&value)?;
+        encoder.finish()
+    });
+    let bytes = encode_result.map_err(map_encode_error)?;
 
     // Call fp.write(bytes)
-    let py = fp.py();
     let py_bytes = PyBytes::new(py, &bytes);
     fp.call_method1("write", (py_bytes,))?;
 
@@ -1425,31 +1518,42 @@ fn dump(
 ///     >>> with open("data.surp", "rb") as f:
 ///     ...     obj = surp.load(f)
 #[pyfunction]
-#[pyo3(signature = (fp, *, strict=true, max_depth=128))]
+#[pyo3(signature = (
+    fp, *, strict=true, max_depth=128,
+    max_block_size=None, max_items=None, max_memory=None,
+    max_string_length=None, max_decompression_ratio=None
+))]
+#[allow(clippy::too_many_arguments)]
 fn load<'py>(
     py: Python<'py>,
     fp: &Bound<'py, PyAny>,
     strict: bool,
     max_depth: usize,
+    max_block_size: Option<usize>,
+    max_items: Option<usize>,
+    max_memory: Option<usize>,
+    max_string_length: Option<usize>,
+    max_decompression_ratio: Option<usize>,
 ) -> PyResult<Bound<'py, PyAny>> {
     // Call fp.read() to get all data
     let data_obj = fp.call_method0("read")?;
     let data: &[u8] = data_obj.extract()?;
 
-    let limits = if strict {
-        Limits {
-            max_nesting_depth: max_depth,
-            ..Limits::default()
-        }
-    } else {
-        Limits {
-            max_nesting_depth: max_depth,
-            ..Limits::unlimited()
-        }
-    };
+    let limits = build_limits(
+        strict,
+        max_depth,
+        max_block_size,
+        max_items,
+        max_memory,
+        max_string_length,
+        max_decompression_ratio,
+    );
 
-    let mut decoder = CoreDecoder::with_limits(data, limits);
-    let values = decoder.decode_all_owned().map_err(map_decode_error)?;
+    let decode_result: Result<Vec<Value>, surp_core::SurpError> = py.detach(move || {
+        let mut decoder = CoreDecoder::with_limits(data, limits);
+        decoder.decode_all_owned()
+    });
+    let values = decode_result.map_err(map_decode_error)?;
 
     if values.len() == 1 {
         value_to_py(py, &values[0])
@@ -1483,7 +1587,7 @@ fn encode<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, 
 /// This is the simple API. For more options, use ``loads()``.
 #[pyfunction]
 fn decode<'py>(py: Python<'py>, data: &Bound<'py, PyBytes>) -> PyResult<Bound<'py, PyAny>> {
-    loads(py, data, true, 128)
+    loads(py, data, true, 128, None, None, None, None, None)
 }
 
 /// Encode a Python object and write the binary output to a file.
@@ -1711,6 +1815,60 @@ fn rfc_query_ctn<'py>(
     let root = decoded.document.effective_root().map_err(map_rfc_error)?;
     let results = rfc001::query(&root, query).map_err(map_rfc_error)?;
     rfc_results_to_py(py, &results, as_ctn)
+}
+
+/// Execute a baseline RFC-001 CQL path query over CBF bytes, returning the
+/// first match or ``None`` (mirrors `surp_core::rfc001::query_one`, which
+/// was previously unbound - only the `query`/`query_cbf` all-matches variant
+/// was exposed to Python).
+#[pyfunction]
+#[pyo3(signature = (data, query, *, as_ctn=false))]
+fn rfc_query_one_cbf<'py>(
+    py: Python<'py>,
+    data: &Bound<'py, PyBytes>,
+    query: &str,
+    as_ctn: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let decoded = rfc001::decode_document(data.as_bytes()).map_err(map_rfc_error)?;
+    let root = decoded.document.effective_root().map_err(map_rfc_error)?;
+    let result = rfc001::query_one(&root, query).map_err(map_rfc_error)?;
+    rfc_result_one_to_py(py, result, as_ctn)
+}
+
+/// Execute a baseline RFC-001 CQL path query over CTN text, returning the
+/// first match or ``None``.
+#[pyfunction]
+#[pyo3(signature = (text, query, *, as_ctn=false))]
+fn rfc_query_one_ctn<'py>(
+    py: Python<'py>,
+    text: &str,
+    query: &str,
+    as_ctn: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let document = rfc001::parse_document(text).map_err(map_rfc_error)?;
+    let bytes = rfc001::encode_document(&document, rfc001::EncodeOptions::default())
+        .map_err(map_rfc_error)?;
+    let decoded = rfc001::decode_document(&bytes).map_err(map_rfc_error)?;
+    let root = decoded.document.effective_root().map_err(map_rfc_error)?;
+    let result = rfc001::query_one(&root, query).map_err(map_rfc_error)?;
+    rfc_result_one_to_py(py, result, as_ctn)
+}
+
+fn rfc_result_one_to_py<'py>(
+    py: Python<'py>,
+    result: Option<rfc001::Value>,
+    as_ctn: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    match result {
+        None => Ok(py.None().into_bound(py)),
+        Some(value) => {
+            if as_ctn {
+                Ok(rfc001::format_value(&value).into_pyobject(py)?.into_any())
+            } else {
+                Ok(rfc_value_to_py(py, &value)?)
+            }
+        }
+    }
 }
 
 /// Parse an RFC-001 CTN document into a native-backed RfcDocument model.
@@ -1997,6 +2155,8 @@ fn _surp_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rfc_cbf_to_ctn, m)?)?;
     m.add_function(wrap_pyfunction!(rfc_query_cbf, m)?)?;
     m.add_function(wrap_pyfunction!(rfc_query_ctn, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_query_one_cbf, m)?)?;
+    m.add_function(wrap_pyfunction!(rfc_query_one_ctn, m)?)?;
     m.add_function(wrap_pyfunction!(rfc_parse_ctn_model, m)?)?;
     m.add_function(wrap_pyfunction!(rfc_decode_cbf_model, m)?)?;
     m.add_function(wrap_pyfunction!(rfc_query_cbf_model, m)?)?;

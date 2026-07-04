@@ -51,6 +51,16 @@ def query_ctn(text: str, query: str, *, as_ctn: bool = False) -> list[Any]:
     return _native.rfc_query_ctn(text, query, as_ctn=as_ctn)
 
 
+def query_one_cbf(data: bytes, query: str, *, as_ctn: bool = False) -> Any | None:
+    """Run a CQL path query over CBF bytes, returning the first match or ``None``."""
+    return _native.rfc_query_one_cbf(data, query, as_ctn=as_ctn)
+
+
+def query_one_ctn(text: str, query: str, *, as_ctn: bool = False) -> Any | None:
+    """Run a CQL path query over CTN text, returning the first match or ``None``."""
+    return _native.rfc_query_one_ctn(text, query, as_ctn=as_ctn)
+
+
 def parse_ctn_model(text: str) -> Any:
     """Parse CTN into a native-backed RfcDocument model."""
     return _native.rfc_parse_ctn_model(text)
@@ -90,6 +100,8 @@ __all__ = [
     "cbf_to_ctn",
     "query_cbf",
     "query_ctn",
+    "query_one_cbf",
+    "query_one_ctn",
     "parse_ctn_model",
     "decode_cbf_model",
     "query_cbf_model",

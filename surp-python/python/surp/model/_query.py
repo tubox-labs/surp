@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..exceptions import SurpError
 from .exceptions import SurpQueryError
 
 
@@ -17,13 +18,23 @@ def query(instance: Any, expr: str) -> list[Any]:
         instance (Any): Model instance to query.
         expr (str): Baseline CQL path expression.
     """
-    try:
-        from surp import rfc001
+    from surp import rfc001
 
-        values = rfc001.query_cbf(instance.to_cbf(), expr)
-        return [_plain(value) for value in values]
-    except Exception as exc:  # pragma: no cover - depends on native package availability
+    # Only wrap genuine query failures (malformed CQL, native encode/decode
+    # errors). A bare `except Exception` here would also swallow programming
+    # errors - e.g. an AttributeError from a broken model definition's
+    # `to_cbf()` - and mislabel them as query failures.
+    try:
+        cbf = instance.to_cbf()
+    except SurpError as exc:
         raise SurpQueryError(str(exc)) from exc
+
+    try:
+        values = rfc001.query_cbf(cbf, expr)
+    except SurpError as exc:
+        raise SurpQueryError(str(exc)) from exc
+
+    return [_plain(value) for value in values]
 
 
 def query_one(instance: Any, expr: str) -> Any:

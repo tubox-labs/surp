@@ -31,6 +31,20 @@ def query_ctn(
 @overload
 def query_ctn(text: str, query: str, *, as_ctn: Literal[True]) -> list[str]: ...
 
+@overload
+def query_one_cbf(
+    data: bytes, query: str, *, as_ctn: Literal[False] = False
+) -> dict[str, Any] | None: ...
+@overload
+def query_one_cbf(data: bytes, query: str, *, as_ctn: Literal[True]) -> str | None: ...
+
+@overload
+def query_one_ctn(
+    text: str, query: str, *, as_ctn: Literal[False] = False
+) -> dict[str, Any] | None: ...
+@overload
+def query_one_ctn(text: str, query: str, *, as_ctn: Literal[True]) -> str | None: ...
+
 class RfcAnnotation:
     name: str
     value: dict[str, Any] | None
