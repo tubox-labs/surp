@@ -159,6 +159,31 @@ impl Compressor for Lz4Compressor {
         if expected_size > max_output {
             return Err(SurpError::MemoryLimitExceeded(expected_size, max_output));
         }
+        // The size prefix is fully attacker-controlled: a corrupted or
+        // adversarial buffer can claim an arbitrarily large uncompressed
+        // size while carrying only a handful of actual bytes. `max_output`
+        // alone isn't a sufficient guard, since a caller may reasonably
+        // configure a very high (or effectively unlimited) ceiling — see
+        // `surp_core::Limits::unlimited()`, which sets limits to
+        // `usize::MAX`. Without an additional check, a few-byte input could
+        // drive `lz4_flex::decompress_size_prepended`'s internal
+        // `Vec::with_capacity(expected_size)` to attempt a multi-gigabyte
+        // allocation.
+        //
+        // Guard against this by bounding the claimed expansion relative to
+        // the *actual* input size, independent of `max_output`. LZ4's
+        // worst-case ratio for legitimate data (e.g. long runs of a single
+        // byte) can exceed `surp_core::Limits::max_decompression_ratio`'s
+        // default of 100:1, so we use a more generous but still bounded
+        // ceiling here.
+        const MAX_COMPRESSION_RATIO: usize = 1024;
+        let max_plausible_size = input.len().saturating_mul(MAX_COMPRESSION_RATIO);
+        if expected_size > max_plausible_size {
+            return Err(SurpError::DecompressionError(format!(
+                "lz4: size prefix ({expected_size}) implausible for {}-byte input (exceeds {MAX_COMPRESSION_RATIO}:1 ratio)",
+                input.len()
+            )));
+        }
         lz4_flex::decompress_size_prepended(input)
             .map_err(|e| SurpError::DecompressionError(format!("lz4 decompress: {e}")))
     }
@@ -283,5 +308,158 @@ mod tests {
         let reg = CompressorRegistry::new();
         assert!(reg.find(CompressionType::None).is_some());
         // Without features, zstd/snappy not found.
+    }
+
+    /// A moderately repetitive buffer, large enough that real compressors
+    /// actually shrink it (as opposed to a tiny input that might not).
+    #[cfg(any(feature = "zstd", feature = "lz4", feature = "snappy"))]
+    fn compressible_sample() -> Vec<u8> {
+        b"the quick brown fox jumps over the lazy dog; "
+            .iter()
+            .cycle()
+            .take(8192)
+            .copied()
+            .collect()
+    }
+
+    #[cfg(feature = "zstd")]
+    #[test]
+    fn zstd_roundtrip_and_shrinks() {
+        let comp = ZstdCompressor::default();
+        let data = compressible_sample();
+        let compressed = comp.compress(&data).unwrap();
+        assert!(
+            compressed.len() < data.len(),
+            "zstd should shrink a repetitive buffer"
+        );
+        let decompressed = comp.decompress(&compressed, data.len() * 2).unwrap();
+        assert_eq!(decompressed, data);
+    }
+
+    #[cfg(feature = "lz4")]
+    #[test]
+    fn lz4_roundtrip_and_shrinks() {
+        let comp = Lz4Compressor;
+        let data = compressible_sample();
+        let compressed = comp.compress(&data).unwrap();
+        assert!(
+            compressed.len() < data.len(),
+            "lz4 should shrink a repetitive buffer"
+        );
+        let decompressed = comp.decompress(&compressed, data.len() * 2).unwrap();
+        assert_eq!(decompressed, data);
+    }
+
+    #[cfg(feature = "snappy")]
+    #[test]
+    fn snappy_roundtrip_and_shrinks() {
+        let comp = SnappyCompressor;
+        let data = compressible_sample();
+        let compressed = comp.compress(&data).unwrap();
+        assert!(
+            compressed.len() < data.len(),
+            "snappy should shrink a repetitive buffer"
+        );
+        let decompressed = comp.decompress(&compressed, data.len() * 2).unwrap();
+        assert_eq!(decompressed, data);
+    }
+
+    #[cfg(feature = "lz4")]
+    #[test]
+    fn lz4_decompress_rejects_implausible_size_prefix_even_with_unlimited_max_output() {
+        let comp = Lz4Compressor;
+
+        // Craft a buffer claiming a ~2 GiB uncompressed size, backed by only
+        // a handful of bytes. This mimics a corrupted or adversarial input:
+        // the 4-byte LE size prefix is fully attacker-controlled.
+        let mut malicious = Vec::new();
+        malicious.extend_from_slice(&2_000_000_000u32.to_le_bytes());
+        malicious.extend_from_slice(&[0u8; 4]); // tiny body, not valid LZ4 data
+
+        // Simulate a caller using an "unlimited" ceiling, e.g. one derived
+        // from `surp_core::Limits::unlimited()`.
+        let result = comp.decompress(&malicious, usize::MAX);
+
+        assert!(
+            result.is_err(),
+            "must reject an implausible size prefix instead of attempting a multi-gigabyte allocation"
+        );
+    }
+
+    #[cfg(feature = "lz4")]
+    #[test]
+    fn lz4_decompress_allows_plausible_ratio_within_max_output() {
+        // Sanity check: the new ratio guard must not reject legitimately
+        // compressible data that happens to expand a lot relative to its
+        // compressed size (as long as it's within the generous bound).
+        let comp = Lz4Compressor;
+        let original = vec![0u8; 8192]; // highly compressible: all zeros
+        let compressed = comp.compress(&original).unwrap();
+        let decompressed = comp.decompress(&compressed, original.len() * 2).unwrap();
+        assert_eq!(decompressed, original);
+    }
+
+    #[cfg(any(feature = "zstd", feature = "lz4", feature = "snappy"))]
+    #[test]
+    fn adaptive_selector_picks_lowest_ratio_compressor() {
+        let registry = CompressorRegistry::with_defaults();
+        let selector = AdaptiveSelector {
+            ratio_threshold: 0.9,
+            sample_size: 64 * 1024,
+        };
+        let data = compressible_sample();
+
+        // Independently compute the best (lowest) ratio among the
+        // registered non-`None` compressors, mirroring `select`'s logic.
+        let mut expected_best_type = CompressionType::None;
+        let mut expected_best_ratio = 1.0f64;
+        for comp in &registry.compressors {
+            if comp.compression_type() == CompressionType::None {
+                continue;
+            }
+            if let Ok(compressed) = comp.compress(&data) {
+                let ratio = compressed.len() as f64 / data.len() as f64;
+                if ratio < expected_best_ratio && ratio < selector.ratio_threshold {
+                    expected_best_ratio = ratio;
+                    expected_best_type = comp.compression_type();
+                }
+            }
+        }
+
+        let selected = selector.select(&data, &registry);
+        assert_eq!(selected, expected_best_type);
+        assert_ne!(
+            selected,
+            CompressionType::None,
+            "at least one real compressor should beat the threshold on repetitive data"
+        );
+    }
+
+    #[cfg(any(feature = "zstd", feature = "lz4", feature = "snappy"))]
+    #[test]
+    fn adaptive_selector_returns_none_when_threshold_unbeatable() {
+        let registry = CompressorRegistry::with_defaults();
+        // An unrealistically strict threshold: no compressor can plausibly
+        // shrink data to under 0.0001x its original size.
+        let selector = AdaptiveSelector {
+            ratio_threshold: 0.0001,
+            sample_size: 64 * 1024,
+        };
+        let data = compressible_sample();
+
+        let selected = selector.select(&data, &registry);
+        assert_eq!(selected, CompressionType::None);
+    }
+
+    #[test]
+    fn adaptive_selector_empty_sample_does_not_panic_and_selects_none() {
+        // The ratio calculation `compressed.len() as f64 / sample.len() as f64`
+        // divides by zero for an empty sample. This must stay benign: no
+        // panic, and no nonsensical compressor selection.
+        let registry = CompressorRegistry::with_defaults();
+        let selector = AdaptiveSelector::default();
+
+        let selected = selector.select(&[], &registry);
+        assert_eq!(selected, CompressionType::None);
     }
 }
